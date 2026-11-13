@@ -1,0 +1,33 @@
+version: '3.9'
+
+# Development overrides — these are applied automatically when running docker compose up
+# They override settings in docker-compose.yml for local development
+
+services:
+  api:
+    build:
+      target: development
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+    command: npm run dev
+
+  web:
+    build:
+      target: development
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+    command: npm run dev
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

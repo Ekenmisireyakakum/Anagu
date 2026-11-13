@@ -1,0 +1,19 @@
+{
+  "name": "@anagu/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts --network besu_local",
+    "deploy:test": "hardhat run scripts/deploy.ts --network besu_test"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.6",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.14.11"
+  }
+}

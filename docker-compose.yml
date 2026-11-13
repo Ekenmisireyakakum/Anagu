@@ -1,0 +1,268 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: anagu_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anagu_db
+      POSTGRES_USER: anagu
+      POSTGRES_PASSWORD: anagu_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anagu -d anagu_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: anagu_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: anagu_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-anagu_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-anagu_minio_secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: anagu_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9002:9001"
+    volumes:
+      - ./infrastructure/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "healthcheck", "-m", "ping", "-q", "0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  besu-node1:
+    image: hyperledger/besu:latest
+    container_name: anagu_besu_node1
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+      - "8546:8546"
+      - "30303:30303"
+    volumes:
+      - ./infrastructure/besu/genesis.json:/opt/besu/genesis.json
+      - ./infrastructure/besu/config.toml:/opt/besu/config.toml
+      - ./infrastructure/besu/validators/node1:/opt/besu/data
+    command: >
+      --genesis-file=/opt/besu/genesis.json
+      --config-file=/opt/besu/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/data/key
+      --rpc-http-enabled=true
+      --rpc-http-port=8545
+      --rpc-http-cors-origins="*"
+      --rpc-http-host=0.0.0.0
+      --rpc-ws-enabled=true
+      --rpc-ws-port=8546
+      --rpc-ws-host=0.0.0.0
+      --host-allowlist="*"
+      --p2p-port=30303
+      --logging=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  besu-node2:
+    image: hyperledger/besu:latest
+    container_name: anagu_besu_node2
+    restart: unless-stopped
+    depends_on:
+      besu-node1:
+        condition: service_healthy
+    ports:
+      - "8547:8547"
+      - "30304:30304"
+    volumes:
+      - ./infrastructure/besu/genesis.json:/opt/besu/genesis.json
+      - ./infrastructure/besu/config.toml:/opt/besu/config.toml
+      - ./infrastructure/besu/validators/node2:/opt/besu/data
+    command: >
+      --genesis-file=/opt/besu/genesis.json
+      --config-file=/opt/besu/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/data/key
+      --rpc-http-enabled=true
+      --rpc-http-port=8547
+      --rpc-http-cors-origins="*"
+      --rpc-http-host=0.0.0.0
+      --host-allowlist="*"
+      --p2p-port=30304
+      --bootnodes=enode://BOOTNODE_ENODE_HERE@besu-node1:30303
+      --logging=INFO
+
+  besu-node3:
+    image: hyperledger/besu:latest
+    container_name: anagu_besu_node3
+    restart: unless-stopped
+    depends_on:
+      besu-node1:
+        condition: service_healthy
+    ports:
+      - "8548:8548"
+      - "30305:30305"
+    volumes:
+      - ./infrastructure/besu/genesis.json:/opt/besu/genesis.json
+      - ./infrastructure/besu/config.toml:/opt/besu/config.toml
+      - ./infrastructure/besu/validators/node3:/opt/besu/data
+    command: >
+      --genesis-file=/opt/besu/genesis.json
+      --config-file=/opt/besu/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/data/key
+      --rpc-http-enabled=true
+      --rpc-http-port=8548
+      --rpc-http-cors-origins="*"
+      --rpc-http-host=0.0.0.0
+      --host-allowlist="*"
+      --p2p-port=30305
+      --bootnodes=enode://BOOTNODE_ENODE_HERE@besu-node1:30303
+      --logging=INFO
+
+  besu-node4:
+    image: hyperledger/besu:latest
+    container_name: anagu_besu_node4
+    restart: unless-stopped
+    depends_on:
+      besu-node1:
+        condition: service_healthy
+    ports:
+      - "8549:8549"
+      - "30306:30306"
+    volumes:
+      - ./infrastructure/besu/genesis.json:/opt/besu/genesis.json
+      - ./infrastructure/besu/config.toml:/opt/besu/config.toml
+      - ./infrastructure/besu/validators/node4:/opt/besu/data
+    command: >
+      --genesis-file=/opt/besu/genesis.json
+      --config-file=/opt/besu/config.toml
+      --data-path=/opt/besu/data
+      --node-private-key-file=/opt/besu/data/key
+      --rpc-http-enabled=true
+      --rpc-http-port=8549
+      --rpc-http-cors-origins="*"
+      --rpc-http-host=0.0.0.0
+      --host-allowlist="*"
+      --p2p-port=30306
+      --bootnodes=enode://BOOTNODE_ENODE_HERE@besu-node1:30303
+      --logging=INFO
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: anagu_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      besu-node1:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://anagu:anagu_password@postgres:5432/anagu_db
+      REDIS_URL: redis://redis:6379
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      BESU_RPC_URL: http://besu-node1:8545
+      BESU_WS_URL: ws://besu-node1:8546
+      BESU_CHAIN_ID: 1337
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-24h}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-anagu_minio}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-anagu_minio_secret}
+      API_PORT: 3001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: anagu_web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:3001
+      NEXT_PUBLIC_MQTT_URL: ws://localhost:9002
+
+  nginx:
+    image: nginx:alpine
+    container_name: anagu_nginx
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres_data:
+    name: anagu_postgres_data
+  redis_data:
+    name: anagu_redis_data
+  minio_data:
+    name: anagu_minio_data
+  mosquitto_data:
+    name: anagu_mosquitto_data
+  mosquitto_log:
+    name: anagu_mosquitto_log
