@@ -1,54 +1,59 @@
-# genesis.json — Important Notes
+# Besu Validator Keys — genesis.json
 
-## extraData Placeholder
+## ⚠ WARNING: These are Hardhat test keys — NEVER use in production
 
-The `extraData` field in `genesis.json` currently uses **zero addresses** as placeholder validator addresses:
+The private keys stored under `validators/node*/key` are the well-known Hardhat
+development accounts. They are public knowledge. NEVER use in production or on
+any network that holds real assets.
 
-```
-0x0000000000000000000000000000000000000001
-0x0000000000000000000000000000000000000002
-0x0000000000000000000000000000000000000003
-0x0000000000000000000000000000000000000004
-```
+---
 
-These are **not real validator keys** and must be replaced before starting the network.
+## Validator Addresses
 
-## Generating Real Validator Keys
+| Node  | Address |
+|-------|---------|
+| node1 | `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` |
+| node2 | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` |
+| node3 | `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` |
+| node4 | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` |
 
-Use the Besu CLI to generate a full blockchain config including validator key pairs:
+---
+
+## Generating Real Keys for Production
+
+Use the Besu operator tool to generate a full network config with fresh keys:
 
 ```bash
-besu operator generate-blockchain-config \
-  --config-file=config.json \
-  --to=networkFiles \
+docker run hyperledger/besu:latest operator generate-blockchain-config \
+  --config-file=/config/config.json \
+  --to=/config/networkFiles \
   --private-key-file-name=key
 ```
 
-This command generates:
-- A `genesis.json` with the correct `extraData` encoding the real validator addresses
-- Key pair files for each validator node
+Copy the generated `key` files from `networkFiles/keys/<address>/key` into the
+appropriate `validators/node*/key` paths, and replace the validator addresses in
+`genesis.json`.
 
-## Placing the Key Files
-
-After generation, copy the private key files into the validator node directories:
-
-```
-infrastructure/besu/validators/node1/key   ← node 1 private key
-infrastructure/besu/validators/node2/key   ← node 2 private key
-infrastructure/besu/validators/node3/key   ← node 3 private key
-infrastructure/besu/validators/node4/key   ← node 4 private key
-```
-
-> **Never commit private key files to git.** They are excluded by `.gitignore`.
+---
 
 ## Updating extraData
 
-After generating keys, replace the placeholder `extraData` in `genesis.json` with the value
-produced by:
+The `extraData` field in `genesis.json` encodes the initial validator set as
+QBFT RLP. To regenerate it after changing the validator list:
 
-```bash
-besu rlp encode --type=QBFT_EXTRA_DATA \
-  --validators=0xADDR1,0xADDR2,0xADDR3,0xADDR4
-```
+1. Create a JSON file listing the validator addresses, e.g. `validators.json`:
+   ```json
+   [
+     "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+     "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+     "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+     "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+   ]
+   ```
 
-Where `0xADDRN` are the Ethereum addresses derived from the generated public keys.
+2. Run:
+   ```bash
+   besu rlp encode --type=QBFT_EXTRA_DATA --input=<validators-json-file>
+   ```
+
+3. Paste the output as the `extraData` value in `genesis.json`.
