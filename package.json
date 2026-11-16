@@ -7,9 +7,12 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "start": "npm run start --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
     "build:all": "npm run build --workspaces",
     "test:all": "npm run test --workspaces --if-present",
     "docker:up": "docker compose up -d",
@@ -18,6 +21,8 @@
     "postinstall": "echo 'ANAGU monorepo installed'"
   },
   "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5",
     "typescript": "^5.5.4"
   },
   "engines": {

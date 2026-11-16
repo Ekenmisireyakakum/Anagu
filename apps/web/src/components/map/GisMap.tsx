@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import { MapContainer, TileLayer, GeoJSON, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, Popup, useMap } from 'react-leaflet';
 import { gisApi } from '../../lib/api';
 import { polygonToWKT } from '../../lib/gis-utils';
 import ParcelInfoPanel from './ParcelInfoPanel';
@@ -166,7 +166,6 @@ function MapInner({ parcels }: { parcels: LandParcel[] }) {
 // Helper to get map ref inside MapContainer using useMap hook equivalent via ref callback
 function MapInnerRef({ onMapReady }: { onMapReady: (m: L.Map) => void }) {
   // This component relies on the MapContainer's context
-  const { useMap } = require('react-leaflet');
   const map = useMap();
   useEffect(() => {
     onMapReady(map);
