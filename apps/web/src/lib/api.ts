@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const rawApiBase = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = rawApiBase.includes('localhost:3001') ? '' : rawApiBase;
 
 export const apiClient = axios.create({
   baseURL: `${API_BASE}/api`,

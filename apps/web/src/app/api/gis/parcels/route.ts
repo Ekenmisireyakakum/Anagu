@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createInMemoryParcel, listParcels } from '../../../../lib/mock-gis-store';
+import { createInMemoryParcel } from '../../../../lib/mock-gis-store';
+import { getAllEffectiveParcels } from '../../../../lib/anagu-store';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
   const lga = searchParams.get('lga');
-  return NextResponse.json(listParcels({ status, lga }));
+  return NextResponse.json(getAllEffectiveParcels({ status, lga }));
 }
 
 export async function POST(request: NextRequest) {

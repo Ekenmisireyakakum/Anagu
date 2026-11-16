@@ -1,0 +1,19 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getAnaguStore } from '../../../lib/anagu-store';
+import { getAuthenticatedUser } from '../../../lib/server-auth';
+
+export async function GET(request: NextRequest) {
+  const user = getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
+  }
+  const store = getAnaguStore();
+  if (user.role === 'LAND_ADMINISTRATOR') {
+    return NextResponse.json(store.mqttLogs);
+  }
+  return NextResponse.json(
+    store.mqttLogs.filter(
+      (m) => m.recipientRole === 'ALL' || m.recipientRole === user.role,
+    ),
+  );
+}
