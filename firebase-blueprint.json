@@ -514,7 +514,7 @@
         },
         "zoning": {
           "type": "string",
-          "enum": ["Residential", "Commercial", "Mixed-Use"]
+          "enum": ["Residential", "Commercial", "Mixed-Use", "Agricultural", "Industrial"]
         },
         "priceNgn": {
           "type": "number"
@@ -654,7 +654,7 @@
         },
         "paymentMethod": {
           "type": "string",
-          "enum": ["REGISTRY_ESCROW", "METAMASK_ETH"]
+          "enum": ["REGISTRY_ESCROW", "METAMASK_ETH", "TRUST_WALLET_ETH", "WEB3_WALLET_ETH"]
         },
         "txHash": {
           "type": "string",

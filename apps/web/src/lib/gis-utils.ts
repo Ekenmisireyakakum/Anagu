@@ -29,6 +29,66 @@ export function wktToLatLngs(wkt: string): Array<[number, number]> {
   }
 }
 
+export function parseJsonRing(jsonText: string): Array<[number, number]> | null {
+  try {
+    const parsed = JSON.parse(jsonText);
+    if (!Array.isArray(parsed) || parsed.length < 4) return null;
+    const ring: Array<[number, number]> = [];
+    for (const pt of parsed) {
+      if (!Array.isArray(pt) || pt.length < 2) return null;
+      const lng = Number(pt[0]);
+      const lat = Number(pt[1]);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+      ring.push([lng, lat]);
+    }
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      ring.push([first[0], first[1]]);
+    }
+    return ring;
+  } catch {
+    return null;
+  }
+}
+
+export function ringToWkt(ring: Array<[number, number]>): string {
+  const closed =
+    ring.length >= 3 &&
+    (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
+      ? [...ring, ring[0]]
+      : ring;
+  return `POLYGON((${closed.map(([lng, lat]) => `${lng} ${lat}`).join(', ')}))`;
+}
+
+export function wktToJsonRing(wkt: string): string {
+  const latLngs = wktToLatLngs(wkt);
+  if (latLngs.length < 3) return '[]';
+  const ring = latLngs.map(([lat, lng]) => [Number(lng.toFixed(6)), Number(lat.toFixed(6))]);
+  return JSON.stringify(ring);
+}
+
+/**
+ * Computes approximate geodesic polygon area in square meters using
+ * spherical excess over WGS 84 mean radius (6,378,137 m).
+ */
+export function computeGeodesicAreaSqm(ring: Array<[number, number]>): number {
+  if (ring.length < 3) return 0;
+  const closed =
+    ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+      ? ring
+      : [...ring, ring[0]];
+  const R = 6378137;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  let total = 0;
+  for (let i = 0; i < closed.length - 1; i++) {
+    const [lng1, lat1] = closed[i];
+    const [lng2, lat2] = closed[i + 1];
+    total += toRad(lng2 - lng1) * (2 + Math.sin(toRad(lat1)) + Math.sin(toRad(lat2)));
+  }
+  return Math.abs((total * R * R) / 2);
+}
+
 export function wktCentroid(wkt: string): { lat: number; lon: number } | null {
   const latLngs = wktToLatLngs(wkt);
   if (latLngs.length === 0) return null;
@@ -49,8 +109,8 @@ export function buildPlotWktFromCenter(
   widthMeters = 45,
   heightMeters = 36,
 ): string {
-  const dLat = (heightMeters / 2 / 110574);
-  const dLon = (widthMeters / 2 / (111320 * Math.cos((lat * Math.PI) / 180)));
+  const dLat = heightMeters / 2 / 110574;
+  const dLon = widthMeters / 2 / (111320 * Math.cos((lat * Math.PI) / 180));
   const minLon = Number((lon - dLon).toFixed(6));
   const maxLon = Number((lon + dLon).toFixed(6));
   const minLat = Number((lat - dLat).toFixed(6));

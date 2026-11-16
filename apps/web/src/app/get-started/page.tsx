@@ -30,13 +30,13 @@ export default function GetStartedPage() {
           <div className="bg-white rounded-lg p-6 border border-slate-200 flex flex-col justify-between gap-6">
             <div>
               <span className="text-xs font-mono font-semibold text-emerald-700">
-                01 · BUY LAND
+                01 · ACCESS LAND
               </span>
               <h2 className="mt-2 text-xl font-bold text-slate-900">
-                Buy Verified Land Parcels
+                Browse Verified &amp; Unverified Land Parcels
               </h2>
               <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-                Browse surveyed plots across Lagos State on OpenStreetMap. Trigger MetaMask or Trust Wallet directly to authorize acquisition and receive an ERC-721 digital title immediately.
+                Explore both deed-verified and unverified land parcels. Trigger any Web3 wallet directly to authorize acquisition and receive an ERC-721 digital title record.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -44,7 +44,7 @@ export default function GetStartedPage() {
                 href="/marketplace"
                 className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap"
               >
-                Open Buy Land Marketplace
+                Access Land
               </Link>
               <button
                 type="button"
@@ -72,7 +72,7 @@ export default function GetStartedPage() {
                 Register Your Own Land
               </h2>
               <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-                Plot your parcel boundary on OpenStreetMap, attach hashed deed or survey PDFs (SHA-256), and submit directly for overlap verification and ERC-721 title issuance.
+                Plot your parcel boundary on OpenStreetMap, attach hashed deed or survey PDFs (SHA-256), and submit directly for verification and ERC-721 title issuance.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -80,13 +80,7 @@ export default function GetStartedPage() {
                 href="/register-land"
                 className="px-5 py-2.5 text-sm font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 transition-colors whitespace-nowrap"
               >
-                Open Register Land Form
-              </Link>
-              <Link
-                href="/map"
-                className="px-4 py-2.5 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors whitespace-nowrap"
-              >
-                Inspect GIS Map
+                Register Land
               </Link>
             </div>
           </div>

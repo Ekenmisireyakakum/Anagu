@@ -350,7 +350,9 @@ export async function persistListingToFirestore(
         lga: listing.lga.slice(0, 64),
         state: listing.state.slice(0, 64),
         areaSqm: Math.max(1, Number(listing.areaSqm || 1)),
-        zoning: listing.zoning,
+        zoning: (['Residential', 'Commercial', 'Mixed-Use'].includes(listing.zoning)
+          ? listing.zoning
+          : 'Mixed-Use') as 'Residential' | 'Commercial' | 'Mixed-Use',
         priceNgn: Math.max(1, Number(listing.priceNgn || 1)),
         priceEth: listing.priceEth.slice(0, 32),
         sellerId: sanitizeId(firebaseUid),
@@ -407,7 +409,8 @@ export async function persistPurchaseToFirestore(
       buyerWallet: normalizeWallet(purchase.buyerWallet),
       priceNgn: Math.max(1, Number(purchase.priceNgn || 1)),
       priceEth: purchase.priceEth.slice(0, 32),
-      paymentMethod: purchase.paymentMethod,
+      paymentMethod:
+        purchase.paymentMethod === 'REGISTRY_ESCROW' ? 'REGISTRY_ESCROW' : 'METAMASK_ETH',
       txHash: purchase.txHash.slice(0, 128),
       tokenId: Math.max(1, Number(purchase.tokenId || 1)),
       createdAt: serverTimestamp(),

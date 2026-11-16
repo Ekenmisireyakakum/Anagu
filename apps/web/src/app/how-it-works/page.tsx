@@ -87,10 +87,10 @@ export default function HowItWorksPage() {
             Sign In to Test Workflow
           </Link>
           <Link
-            href="/map"
+            href="/marketplace"
             className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
           >
-            Open GIS Map
+            Access Land
           </Link>
         </div>
       </main>

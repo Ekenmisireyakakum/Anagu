@@ -26,8 +26,8 @@ export default function MetaMaskConnectButton({
       {wallet.isConnected && wallet.address
         ? `${wallet.walletLabel}: ${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
         : compact
-        ? 'Connect Wallet'
-        : 'Connect MetaMask / Trust Wallet'}
+        ? 'Connect Web3 Wallet'
+        : 'Connect Any Web3 Wallet'}
     </button>
   );
 }

@@ -19,4 +19,9 @@ export class BlockchainController {
   async getTitleMetadata(@Param('tokenId') tokenId: string) {
     return this.blockchainService.getTitleMetadata(+tokenId);
   }
+
+  @Get('validators')
+  async getValidators() {
+    return this.blockchainService.getValidators();
+  }
 }

@@ -67,6 +67,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [mmLoading, setMmLoading] = useState(false);
   const [fbLoading, setFbLoading] = useState(false);
+  const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -93,16 +94,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleMetaMaskSignIn = async () => {
+  const completeWalletChallengeLogin = async (connectedAddress: string) => {
     setError(null);
-    wallet.clearError();
     setMmLoading(true);
     try {
-      const connectedAddress = wallet.address || (await wallet.connect());
-      if (!connectedAddress) {
-        return;
-      }
-
       const nonceRes = await fetch('/api/auth/metamask/nonce', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,16 +121,37 @@ export default function LoginPage() {
       });
       const verified = await verifyRes.json();
       if (!verifyRes.ok) {
-        throw new Error(verified.message || 'MetaMask signature verification failed');
+        throw new Error(verified.message || 'Web3 wallet signature verification failed');
       }
 
       router.push(nextPath);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in with MetaMask');
+      setError(err instanceof Error ? err.message : 'Unable to sign in with Web3 wallet');
     } finally {
       setMmLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (pendingWalletSignIn && wallet.isConnected && wallet.address) {
+      setPendingWalletSignIn(false);
+      void completeWalletChallengeLogin(wallet.address);
+    } else if (pendingWalletSignIn && !wallet.isModalOpen && !wallet.isConnecting && !wallet.isConnected) {
+      setPendingWalletSignIn(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingWalletSignIn, wallet.isConnected, wallet.address, wallet.isModalOpen, wallet.isConnecting]);
+
+  const handleMetaMaskSignIn = async () => {
+    setError(null);
+    wallet.clearError();
+    const connectedAddress = wallet.address || (await wallet.connect());
+    if (!connectedAddress) {
+      setPendingWalletSignIn(true);
+      return;
+    }
+    await completeWalletChallengeLogin(connectedAddress);
   };
 
   const handleGoogleSignIn = async () => {
@@ -274,12 +290,12 @@ export default function LoginPage() {
 
           <p className="mt-5 text-xs text-slate-600">
             No account required for landowners or buyers:{' '}
-            <Link href="/marketplace" className="font-semibold text-emerald-700 hover:underline">
-              Buy Land
-            </Link>{' '}
-            or{' '}
             <Link href="/register-land" className="font-semibold text-emerald-700 hover:underline">
               Register Land
+            </Link>{' '}
+            or{' '}
+            <Link href="/marketplace" className="font-semibold text-emerald-700 hover:underline">
+              Access Land
             </Link>
             .
           </p>

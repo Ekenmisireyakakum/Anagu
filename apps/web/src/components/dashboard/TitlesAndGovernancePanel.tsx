@@ -1,9 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
+
+interface ContractStatusItem {
+  name: string;
+  standard: string;
+  compiled: boolean;
+  address: string | null;
+  deployedOnChain: boolean;
+}
+
+interface BlockchainStatusPayload {
+  mode: 'LIVE_BESU_ONCHAIN' | 'WEB3_CRYPTO_LEDGER';
+  rpcConfigured: boolean;
+  rpcConnected: boolean;
+  blockNumber: number | null;
+  chainId: number | null;
+  contracts: ContractStatusItem[];
+}
 
 interface TitlesAndGovernancePanelProps {
   user: SafeUser;
@@ -29,6 +46,20 @@ export default function TitlesAndGovernancePanel({
   const [signWithMetaMask, setSignWithMetaMask] = useState(true);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [chainStatus, setChainStatus] = useState<BlockchainStatusPayload | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/blockchain/status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data) setChainStatus(data as BlockchainStatusPayload);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleTransfer = async (bypassAttempt = false) => {
     setBusy(true);
@@ -146,10 +177,65 @@ export default function TitlesAndGovernancePanel({
         </div>
       )}
 
+      {chainStatus && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                Smart Contracts &amp; Blockchain Ledger Status
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {chainStatus.rpcConnected
+                  ? `Connected to EVM RPC (Chain ID ${chainStatus.chainId} · Block #${chainStatus.blockNumber})`
+                  : 'No live Besu JSON-RPC node connected in this runtime — running Web3 ECDSA cryptographic ledger with compiled Solidity contracts ready for Besu deployment.'}
+              </p>
+            </div>
+            <span
+              className={`px-2.5 py-1 text-[11px] font-mono font-semibold border rounded ${
+                chainStatus.mode === 'LIVE_BESU_ONCHAIN'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-amber-50 text-amber-900 border-amber-200'
+              }`}
+            >
+              {chainStatus.mode === 'LIVE_BESU_ONCHAIN'
+                ? 'LIVE BESU ON-CHAIN'
+                : 'CRYPTO LEDGER + COMPILED CONTRACTS'}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            {chainStatus.contracts.map((c) => (
+              <div
+                key={c.name}
+                className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-1"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-semibold text-slate-900">{c.name}.sol</span>
+                  <span
+                    className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
+                      c.deployedOnChain
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : c.compiled
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    {c.deployedOnChain ? 'DEPLOYED' : c.compiled ? 'COMPILED' : 'SOURCE ONLY'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500">{c.standard}</div>
+                <div className="font-mono text-[10px] text-slate-600 truncate">
+                  {c.address ? `Address: ${c.address}` : 'Awaiting Besu deployment address'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {wallet.isConnected && (
         <div className="bg-white border border-slate-200 rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="font-mono text-slate-600">
-            MetaMask Connected: <strong className="text-slate-900">{wallet.address}</strong> · {wallet.chainName}
+            {wallet.walletLabel} Connected: <strong className="text-slate-900">{wallet.address}</strong> · {wallet.chainName}
           </span>
           <label className="flex items-center gap-1.5 font-medium text-slate-700 cursor-pointer">
             <input
@@ -158,7 +244,7 @@ export default function TitlesAndGovernancePanel({
               onChange={(e) => setSignWithMetaMask(e.target.checked)}
               className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
             />
-            Require MetaMask signature on authorized actions
+            Require Web3 wallet signature on authorized actions
           </label>
         </div>
       )}

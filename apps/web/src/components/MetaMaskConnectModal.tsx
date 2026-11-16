@@ -10,6 +10,8 @@ export default function MetaMaskConnectModal() {
   const [copiedAddr, setCopiedAddr] = useState(false);
   const [copiedUri, setCopiedUri] = useState(false);
   const [currentUrl, setCurrentUrl] = useState('');
+  const [showKeyImport, setShowKeyImport] = useState(false);
+  const [privateKeyInput, setPrivateKeyInput] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -17,14 +19,16 @@ export default function MetaMaskConnectModal() {
     }
   }, [wallet.isModalOpen]);
 
+  const { isModalOpen, closeModal } = wallet;
+
   useEffect(() => {
-    if (!wallet.isModalOpen) return;
+    if (!isModalOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') wallet.closeModal();
+      if (e.key === 'Escape') closeModal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [wallet]);
+  }, [isModalOpen, closeModal]);
 
   if (!wallet.isModalOpen) return null;
 
@@ -42,6 +46,13 @@ export default function MetaMaskConnectModal() {
     setTimeout(() => setCopiedUri(false), 2000);
   };
 
+  const activeTab =
+    wallet.selectedTab === 'metamask' ||
+    wallet.selectedTab === 'trustwallet' ||
+    wallet.selectedTab === 'mobile'
+      ? wallet.selectedTab
+      : 'all';
+
   return (
     <div
       role="dialog"
@@ -53,10 +64,10 @@ export default function MetaMaskConnectModal() {
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
           <div>
             <h2 id="wallet-modal-title" className="text-base font-bold text-slate-900">
-              Connect MetaMask or Trust Wallet
+              Connect Any Web3 Wallet
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Sign land purchases and title registrations directly from your Web3 wallet.
+              Use MetaMask, Trust Wallet, Coinbase Wallet, Rabby, Rainbow, Phantom, OKX, or any EIP-6963 Web3 wallet.
             </p>
           </div>
           <button
@@ -80,9 +91,9 @@ export default function MetaMaskConnectModal() {
             <div className="space-y-4">
               <div className="p-4 rounded-md bg-emerald-50 border border-emerald-200 space-y-2">
                 <div className="flex items-center justify-between text-xs text-emerald-800">
-                  <span className="font-semibold">Connected {wallet.walletLabel}</span>
+                  <span className="font-semibold">Connected · {wallet.walletLabel}</span>
                   <span className="font-mono">
-                    {wallet.connectionMethod === 'sdk' ? 'Mobile SDK' : 'Browser Extension'}
+                    {wallet.connectionMethod === 'sdk' ? 'Mobile SDK' : 'Web3 Provider'}
                   </span>
                 </div>
                 <div className="font-mono text-xs text-slate-900 break-all">
@@ -103,8 +114,8 @@ export default function MetaMaskConnectModal() {
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-slate-800">Switch Network</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="text-xs font-semibold text-slate-800">Switch EVM Network</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => wallet.switchChain(1)}
@@ -126,6 +137,39 @@ export default function MetaMaskConnectModal() {
                     }`}
                   >
                     Sepolia (11155111)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchChain(137)}
+                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                      wallet.chainId === 137
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Polygon (137)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchChain(8453)}
+                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                      wallet.chainId === 8453
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Base (8453)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchChain(42161)}
+                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                      wallet.chainId === 42161
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Arbitrum (42161)
                   </button>
                   <button
                     type="button"
@@ -161,15 +205,29 @@ export default function MetaMaskConnectModal() {
           ) : (
             <div className="space-y-4">
               {/* Wallet Selector Tabs */}
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-md">
+              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-md">
+                <button
+                  type="button"
+                  onClick={() => {
+                    wallet.clearError();
+                    wallet.setSelectedTab('all');
+                  }}
+                  className={`py-2 px-2 text-xs font-semibold rounded transition-colors ${
+                    activeTab === 'all'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All Wallets
+                </button>
                 <button
                   type="button"
                   onClick={() => {
                     wallet.clearError();
                     wallet.setSelectedTab('metamask');
                   }}
-                  className={`py-2 px-3 text-xs font-semibold rounded transition-colors ${
-                    wallet.selectedTab === 'metamask'
+                  className={`py-2 px-2 text-xs font-semibold rounded transition-colors ${
+                    activeTab === 'metamask'
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -182,17 +240,212 @@ export default function MetaMaskConnectModal() {
                     wallet.clearError();
                     wallet.setSelectedTab('trustwallet');
                   }}
-                  className={`py-2 px-3 text-xs font-semibold rounded transition-colors ${
-                    wallet.selectedTab === 'trustwallet'
+                  className={`py-2 px-2 text-xs font-semibold rounded transition-colors ${
+                    activeTab === 'trustwallet'
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   Trust Wallet
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    wallet.clearError();
+                    wallet.setSelectedTab('mobile');
+                  }}
+                  className={`py-2 px-2 text-xs font-semibold rounded transition-colors ${
+                    activeTab === 'mobile'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Mobile / QR
+                </button>
               </div>
 
-              {wallet.selectedTab === 'metamask' ? (
+              {activeTab === 'all' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-md border border-slate-200 bg-slate-50 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Detected Web3 Browser Wallets (EIP-6963)
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => void wallet.refreshWallets()}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                      >
+                        Rescan
+                      </button>
+                    </div>
+
+                    {wallet.discoveredWallets.length > 0 ? (
+                      <div className="space-y-2">
+                        {wallet.discoveredWallets.map((w) => (
+                          <div
+                            key={w.id}
+                            className="flex items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-md"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {w.icon ? (
+                                <Image
+                                  src={w.icon}
+                                  alt={w.name}
+                                  width={24}
+                                  height={24}
+                                  unoptimized
+                                  className="rounded shrink-0"
+                                />
+                              ) : (
+                                <span className="w-6 h-6 rounded bg-slate-900 text-white text-[11px] font-mono font-bold flex items-center justify-center shrink-0">
+                                  {w.name.slice(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-slate-900 truncate">
+                                  {w.name}
+                                </div>
+                                <div className="text-[11px] font-mono text-slate-500 truncate">
+                                  {w.rdns}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={wallet.isConnecting}
+                              onClick={async () => {
+                                const res = await wallet.connectWalletById(w.id);
+                                if (res.address) wallet.closeModal();
+                              }}
+                              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded hover:bg-emerald-800 disabled:opacity-50 shrink-0"
+                            >
+                              {wallet.isConnecting ? 'Connecting...' : 'Connect'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
+                        <p>
+                          {wallet.inIframe
+                            ? 'Embedded preview frames block browser extension injection. Open ANAGU in a standalone tab to connect MetaMask, Coinbase Wallet, Rabby, Rainbow, Phantom, or Trust Wallet extensions—or use Mobile QR below.'
+                            : 'No injected browser Web3 extension detected yet. Install any EIP-1193 wallet (MetaMask, Trust Wallet, Coinbase Wallet, Rabby, Rainbow, Phantom, OKX) or pair a mobile wallet.'}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={wallet.isConnecting}
+                            onClick={async () => {
+                              const res = await wallet.connectWithBrowserSigner();
+                              if (res.address) wallet.closeModal();
+                            }}
+                            className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                          >
+                            {wallet.isConnecting
+                              ? 'Starting Web3 Wallet...'
+                              : 'Use Instant Browser Web3 Wallet'}
+                          </button>
+                          {wallet.inIframe && currentUrl && (
+                            <a
+                              href={currentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50"
+                            >
+                              Open in New Tab →
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => wallet.setSelectedTab('mobile')}
+                            className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800"
+                          >
+                            Mobile Wallet / QR
+                          </button>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/80">
+                          <button
+                            type="button"
+                            onClick={() => setShowKeyImport((prev) => !prev)}
+                            className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
+                          >
+                            {showKeyImport
+                              ? 'Hide EVM Private Key Import'
+                              : 'Or Connect Using a Custom / Besu Private Key'}
+                          </button>
+                          {showKeyImport && (
+                            <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                              <input
+                                type="password"
+                                value={privateKeyInput}
+                                onChange={(e) => setPrivateKeyInput(e.target.value)}
+                                placeholder="Paste 0x... EVM private key (stored in session only)"
+                                className="flex-1 px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-md"
+                              />
+                              <button
+                                type="button"
+                                disabled={wallet.isConnecting || !privateKeyInput.trim()}
+                                onClick={async () => {
+                                  const res = await wallet.connectWithBrowserSigner(privateKeyInput);
+                                  if (res.address) {
+                                    setPrivateKeyInput('');
+                                    wallet.closeModal();
+                                  }
+                                }}
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                Import &amp; Connect
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-md border border-slate-200 bg-white space-y-2.5">
+                    <div className="text-xs font-semibold text-slate-900">
+                      Quick Launch Supported Web3 Mobile Apps
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {wallet.metamaskDeepLink && (
+                        <a
+                          href={wallet.metamaskDeepLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 text-center text-xs font-semibold text-slate-900 bg-amber-100 border border-amber-300 rounded hover:bg-amber-200"
+                        >
+                          MetaMask App
+                        </a>
+                      )}
+                      {wallet.trustDeepLink && (
+                        <a
+                          href={wallet.trustDeepLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 text-center text-xs font-semibold text-white bg-blue-700 rounded hover:bg-blue-800"
+                        >
+                          Trust Wallet
+                        </a>
+                      )}
+                      {wallet.coinbaseDeepLink && (
+                        <a
+                          href={wallet.coinbaseDeepLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 text-center text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
+                        >
+                          Coinbase Wallet
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'metamask' && (
                 <div className="space-y-4">
                   <div className="p-4 rounded-md border border-slate-200 bg-slate-50 space-y-3">
                     <div className="flex items-center justify-between gap-2">
@@ -227,6 +480,22 @@ export default function MetaMaskConnectModal() {
                         {wallet.isConnecting ? 'Requesting MetaMask...' : 'Connect MetaMask Extension'}
                       </button>
 
+                      {!wallet.isMetaMaskAvailable && (
+                        <button
+                          type="button"
+                          disabled={wallet.isConnecting}
+                          onClick={async () => {
+                            const res = await wallet.connectWithBrowserSigner();
+                            if (res.address) wallet.closeModal();
+                          }}
+                          className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {wallet.isConnecting
+                            ? 'Starting Web3 Wallet...'
+                            : 'Use Instant Browser Web3 Wallet'}
+                        </button>
+                      )}
+
                       {wallet.inIframe && currentUrl && (
                         <a
                           href={currentUrl}
@@ -235,17 +504,6 @@ export default function MetaMaskConnectModal() {
                           className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50"
                         >
                           Open in New Tab →
-                        </a>
-                      )}
-
-                      {!wallet.isMetaMaskAvailable && !wallet.inIframe && (
-                        <a
-                          href="https://metamask.io/download/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-emerald-700 hover:underline"
-                        >
-                          Install MetaMask →
                         </a>
                       )}
                     </div>
@@ -263,16 +521,27 @@ export default function MetaMaskConnectModal() {
                     </p>
 
                     {!wallet.sdkQrDataUrl && (
-                      <button
-                        type="button"
-                        disabled={wallet.sdkConnecting}
-                        onClick={() => void wallet.connectWithSdk()}
-                        className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50"
-                      >
-                        {wallet.sdkConnecting
-                          ? 'Generating MetaMask QR...'
-                          : 'Generate MetaMask Mobile QR'}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={wallet.sdkConnecting}
+                          onClick={() => void wallet.connectWithSdk()}
+                          className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {wallet.sdkConnecting
+                            ? 'Generating MetaMask QR...'
+                            : 'Generate MetaMask Mobile QR'}
+                        </button>
+                        {wallet.sdkConnecting && (
+                          <button
+                            type="button"
+                            onClick={wallet.cancelSdkConnect}
+                            className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {wallet.sdkQrDataUrl && (
@@ -314,7 +583,9 @@ export default function MetaMaskConnectModal() {
                     )}
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {activeTab === 'trustwallet' && (
                 <div className="space-y-4">
                   <div className="p-4 rounded-md border border-slate-200 bg-slate-50 space-y-3">
                     <div className="flex items-center justify-between gap-2">
@@ -349,6 +620,22 @@ export default function MetaMaskConnectModal() {
                         {wallet.isConnecting ? 'Requesting Trust Wallet...' : 'Connect Trust Wallet Extension'}
                       </button>
 
+                      {!wallet.isTrustWalletAvailable && (
+                        <button
+                          type="button"
+                          disabled={wallet.isConnecting}
+                          onClick={async () => {
+                            const res = await wallet.connectWithBrowserSigner();
+                            if (res.address) wallet.closeModal();
+                          }}
+                          className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {wallet.isConnecting
+                            ? 'Starting Web3 Wallet...'
+                            : 'Use Instant Browser Web3 Wallet'}
+                        </button>
+                      )}
+
                       {wallet.inIframe && currentUrl && (
                         <a
                           href={currentUrl}
@@ -357,17 +644,6 @@ export default function MetaMaskConnectModal() {
                           className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50"
                         >
                           Open in New Tab →
-                        </a>
-                      )}
-
-                      {!wallet.isTrustWalletAvailable && !wallet.inIframe && (
-                        <a
-                          href="https://trustwallet.com/browser-extension"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-blue-700 hover:underline"
-                        >
-                          Install Trust Wallet →
                         </a>
                       )}
                     </div>
@@ -409,6 +685,69 @@ export default function MetaMaskConnectModal() {
                               Open in Trust Wallet App →
                             </a>
                           )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'mobile' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-md border border-slate-200 bg-white space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Any Mobile Web3 dApp Browser (QR)
+                      </h3>
+                      <span className="text-[11px] font-mono text-slate-500">Coinbase · Rainbow · OKX · Phantom</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Scan with any mobile Web3 wallet browser (Coinbase Wallet, Rainbow, OKX, Zerion, Phantom, Trust Wallet, or MetaMask) to open ANAGU with injected Web3 signing.
+                    </p>
+                    {wallet.universalQrDataUrl && (
+                      <div className="pt-2 flex flex-col sm:flex-row items-center gap-4 border-t border-slate-100">
+                        <div className="p-2 bg-white border border-slate-200 rounded-md shrink-0">
+                          <Image
+                            src={wallet.universalQrDataUrl}
+                            alt="Universal Web3 dApp QR code"
+                            width={150}
+                            height={150}
+                            unoptimized
+                          />
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex flex-wrap gap-2">
+                            {wallet.coinbaseDeepLink && (
+                              <a
+                                href={wallet.coinbaseDeepLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
+                              >
+                                Open in Coinbase Wallet →
+                              </a>
+                            )}
+                            {wallet.trustDeepLink && (
+                              <a
+                                href={wallet.trustDeepLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 font-semibold text-white bg-blue-700 rounded hover:bg-blue-800"
+                              >
+                                Open in Trust Wallet →
+                              </a>
+                            )}
+                            {wallet.metamaskDeepLink && (
+                              <a
+                                href={wallet.metamaskDeepLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 font-semibold text-slate-900 bg-amber-100 border border-amber-300 rounded hover:bg-amber-200"
+                              >
+                                Open in MetaMask →
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}

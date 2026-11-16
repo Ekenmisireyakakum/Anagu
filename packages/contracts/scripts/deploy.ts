@@ -18,10 +18,12 @@ async function main() {
   await landRegistry.waitForDeployment();
   console.log("LandRegistry deployed to:", await landRegistry.getAddress());
 
-  // 3. Grant REGISTRY_ROLE on LandTitleNFT to LandRegistry
+  // 3. Grant REGISTRY_ROLE and GOVERNOR_ROLE on LandTitleNFT to LandRegistry
   const registryRole = await landTitleNFT.REGISTRY_ROLE();
   await landTitleNFT.grantRole(registryRole, await landRegistry.getAddress());
-  console.log("Granted REGISTRY_ROLE to LandRegistry");
+  const governorRole = await landTitleNFT.GOVERNOR_ROLE();
+  await landTitleNFT.grantRole(governorRole, await landRegistry.getAddress());
+  console.log("Granted REGISTRY_ROLE and GOVERNOR_ROLE to LandRegistry");
 
   // 4. Deploy ValidatorRegistry
   const ValidatorRegistry = await hre.ethers.getContractFactory("ValidatorRegistry");

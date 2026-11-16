@@ -198,7 +198,7 @@ service cloud.firestore {
         && data.lga is string && data.lga.size() >= 2 && data.lga.size() <= 64
         && data.state is string && data.state.size() >= 2 && data.state.size() <= 64
         && data.areaSqm is number && data.areaSqm > 0
-        && data.zoning in ['Residential', 'Commercial', 'Mixed-Use']
+        && data.zoning in ['Residential', 'Commercial', 'Mixed-Use', 'Agricultural', 'Industrial']
         && data.priceNgn is number && data.priceNgn > 0
         && data.priceEth is string && data.priceEth.size() >= 1 && data.priceEth.size() <= 32
         && isValidId(data.sellerId)
@@ -236,7 +236,7 @@ service cloud.firestore {
         && data.buyerWallet is string && data.buyerWallet.size() == 42 && data.buyerWallet.matches('^0x[a-fA-F0-9]{40}$')
         && data.priceNgn is number && data.priceNgn > 0
         && data.priceEth is string && data.priceEth.size() >= 1 && data.priceEth.size() <= 32
-        && data.paymentMethod in ['REGISTRY_ESCROW', 'METAMASK_ETH']
+        && data.paymentMethod in ['REGISTRY_ESCROW', 'METAMASK_ETH', 'TRUST_WALLET_ETH', 'WEB3_WALLET_ETH']
         && data.txHash is string && data.txHash.size() >= 4 && data.txHash.size() <= 128
         && data.tokenId is number && data.tokenId >= 1
         && data.createdAt is timestamp;

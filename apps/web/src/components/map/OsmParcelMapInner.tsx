@@ -136,11 +136,9 @@ export default function OsmParcelMapInner({
     if (!interactive || !onSelectWkt) return;
     const generatedWkt = buildPlotWktFromCenter(lat, lon);
     onSelectWkt(generatedWkt);
-    setFlyTarget({ lat, lon, key: Date.now() });
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSearch = async () => {
     const q = searchQuery.trim();
     if (!q) return;
     setSearching(true);
@@ -162,9 +160,10 @@ export default function OsmParcelMapInner({
       }
       const lat = Number(results[0].lat);
       const lon = Number(results[0].lon);
-      setFlyTarget({ lat, lon, key: Date.now() });
       if (interactive && onSelectWkt) {
         onSelectWkt(buildPlotWktFromCenter(lat, lon), results[0].display_name);
+      } else {
+        setFlyTarget({ lat, lon, key: Date.now() });
       }
     } catch {
       setSearchError('Unable to reach OpenStreetMap Nominatim lookup. Click directly on the map instead.');
@@ -177,22 +176,29 @@ export default function OsmParcelMapInner({
     <div className="space-y-2.5">
       {interactive && (
         <div className="space-y-2">
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
+          <div role="search" className="flex flex-col sm:flex-row gap-2">
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleSearch();
+                }
+              }}
               placeholder="Search street or district on OpenStreetMap (e.g. Ikoyi, Lekki)..."
               className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
             />
             <button
-              type="submit"
+              type="button"
               disabled={searching}
+              onClick={() => void handleSearch()}
               className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap shrink-0"
             >
               {searching ? 'Searching...' : 'Locate on OSM'}
             </button>
-          </form>
+          </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className="text-slate-500 mr-1">Jump to Lagos district:</span>

@@ -14,6 +14,7 @@ export class BlockchainService {
   private signer: ethers.Wallet | null = null;
   private landTitleNFT: ethers.Contract | null = null;
   private landRegistry: ethers.Contract | null = null;
+  private validatorRegistry: ethers.Contract | null = null;
 
   constructor(private configService: ConfigService) {
     const rpcUrl = this.configService.get<string>('BESU_RPC_URL') || 'http://localhost:8545';
@@ -26,6 +27,7 @@ export class BlockchainService {
 
     const nftAddress = this.configService.get<string>('LAND_TITLE_NFT_CONTRACT_ADDRESS');
     const registryAddress = this.configService.get<string>('LAND_REGISTRY_CONTRACT_ADDRESS');
+    const validatorAddress = this.configService.get<string>('VALIDATOR_REGISTRY_CONTRACT_ADDRESS');
 
     try {
       const nftArtifactPath = path.resolve(
@@ -35,6 +37,10 @@ export class BlockchainService {
       const registryArtifactPath = path.resolve(
         __dirname,
         '../../../../packages/contracts/artifacts/contracts/LandRegistry.sol/LandRegistry.json'
+      );
+      const validatorArtifactPath = path.resolve(
+        __dirname,
+        '../../../../packages/contracts/artifacts/contracts/ValidatorRegistry.sol/ValidatorRegistry.json'
       );
 
       if (fs.existsSync(nftArtifactPath) && nftAddress) {
@@ -52,19 +58,53 @@ export class BlockchainService {
       } else {
         this.logger.warn('LandRegistry artifact or address not found — contract will be unavailable until deployed');
       }
+
+      if (fs.existsSync(validatorArtifactPath) && validatorAddress) {
+        const validatorArtifact = JSON.parse(fs.readFileSync(validatorArtifactPath, 'utf8'));
+        const signerOrProvider = this.signer || this.provider;
+        this.validatorRegistry = new ethers.Contract(validatorAddress, validatorArtifact.abi, signerOrProvider);
+      } else {
+        this.logger.warn('ValidatorRegistry artifact or address not found — contract will be unavailable until deployed');
+      }
     } catch (err) {
       this.logger.warn(`Failed to load contract artifacts: ${err}`);
     }
   }
 
-  async isConnected(): Promise<{ connected: boolean; blockNumber?: number; chainId?: number }> {
+  async isConnected(): Promise<{
+    connected: boolean;
+    blockNumber?: number;
+    chainId?: number;
+    contracts: {
+      landTitleNFT: boolean;
+      landRegistry: boolean;
+      validatorRegistry: boolean;
+    };
+  }> {
+    const contracts = {
+      landTitleNFT: Boolean(this.landTitleNFT),
+      landRegistry: Boolean(this.landRegistry),
+      validatorRegistry: Boolean(this.validatorRegistry),
+    };
     try {
       const blockNumber = await this.provider.getBlockNumber();
       const network = await this.provider.getNetwork();
-      return { connected: true, blockNumber, chainId: Number(network.chainId) };
+      return { connected: true, blockNumber, chainId: Number(network.chainId), contracts };
     } catch (_e) {
-      return { connected: false };
+      return { connected: false, contracts };
     }
+  }
+
+  async getValidators(): Promise<{ validators: string[]; totalWeight: string }> {
+    if (!this.validatorRegistry) throw new Error('ValidatorRegistry contract not initialized');
+    const [validators, totalWeight] = await Promise.all([
+      (this.validatorRegistry as any)['getValidators'](),
+      (this.validatorRegistry as any)['getTotalWeight'](),
+    ]);
+    return {
+      validators,
+      totalWeight: totalWeight.toString(),
+    };
   }
 
   async registerLand(dto: RegisterLandDto): Promise<{ txHash: string; tokenId: number }> {

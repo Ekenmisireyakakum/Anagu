@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [usersList, setUsersList] = useState<SafeUser[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [linkingWallet, setLinkingWallet] = useState(false);
+  const [pendingWalletLink, setPendingWalletLink] = useState(false);
   const [walletNotice, setWalletNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   const loadWorkspaceData = useCallback(async (currentUser: SafeUser) => {
@@ -124,60 +125,78 @@ export default function DashboardPage() {
     }
   };
 
+  const completeWalletLink = useCallback(
+    async (connectedAddress: string) => {
+      if (!user) return;
+      setWalletNotice(null);
+      setLinkingWallet(true);
+      try {
+        const nonceRes = await fetch('/api/auth/metamask/nonce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: connectedAddress }),
+        });
+        const challenge = await nonceRes.json();
+        if (!nonceRes.ok) {
+          throw new Error(challenge.message || 'Failed to issue wallet challenge');
+        }
+
+        const signature = await wallet.signMessage(challenge.message, connectedAddress);
+
+        const verifyRes = await fetch('/api/auth/metamask/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: connectedAddress,
+            signature,
+            mode: 'link',
+          }),
+        });
+        const verified = await verifyRes.json();
+        if (!verifyRes.ok) {
+          throw new Error(verified.message || 'Failed to verify Web3 signature');
+        }
+
+        setUser(verified.user as SafeUser);
+        if (firebase.firebaseUser) {
+          await firebase.syncWalletProfile(connectedAddress, true).catch(() => {});
+        }
+        setWalletNotice({
+          ok: true,
+          text: `Web3 wallet ${connectedAddress} cryptographically linked to ${verified.user.email} (${verified.user.role}).`,
+        });
+        await loadWorkspaceData(verified.user as SafeUser);
+      } catch (err) {
+        setWalletNotice({
+          ok: false,
+          text: err instanceof Error ? err.message : 'Web3 wallet linking failed',
+        });
+      } finally {
+        setLinkingWallet(false);
+      }
+    },
+    [firebase, loadWorkspaceData, user, wallet],
+  );
+
+  useEffect(() => {
+    if (pendingWalletLink && wallet.isConnected && wallet.address) {
+      setPendingWalletLink(false);
+      void completeWalletLink(wallet.address);
+    } else if (pendingWalletLink && !wallet.isModalOpen && !wallet.isConnecting && !wallet.isConnected) {
+      setPendingWalletLink(false);
+    }
+  }, [completeWalletLink, pendingWalletLink, wallet.address, wallet.isConnected, wallet.isConnecting, wallet.isModalOpen]);
+
   const handleLinkMetaMask = async () => {
     if (!user) return;
     setWalletNotice(null);
     wallet.clearError();
-    setLinkingWallet(true);
-    try {
-      const connectedAddress = wallet.address || (await wallet.connect());
-      if (!connectedAddress) {
-        return;
-      }
-
-      const nonceRes = await fetch('/api/auth/metamask/nonce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: connectedAddress }),
-      });
-      const challenge = await nonceRes.json();
-      if (!nonceRes.ok) {
-        throw new Error(challenge.message || 'Failed to issue wallet challenge');
-      }
-
-      const signature = await wallet.signMessage(challenge.message, connectedAddress);
-
-      const verifyRes = await fetch('/api/auth/metamask/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          address: connectedAddress,
-          signature,
-          mode: 'link',
-        }),
-      });
-      const verified = await verifyRes.json();
-      if (!verifyRes.ok) {
-        throw new Error(verified.message || 'Failed to verify MetaMask signature');
-      }
-
-      setUser(verified.user as SafeUser);
-      if (firebase.firebaseUser) {
-        await firebase.syncWalletProfile(connectedAddress, true).catch(() => {});
-      }
-      setWalletNotice({
-        ok: true,
-        text: `MetaMask wallet ${connectedAddress} cryptographically linked to ${verified.user.email} (${verified.user.role}).`,
-      });
-      await loadWorkspaceData(verified.user as SafeUser);
-    } catch (err) {
-      setWalletNotice({
-        ok: false,
-        text: err instanceof Error ? err.message : 'MetaMask linking failed',
-      });
-    } finally {
-      setLinkingWallet(false);
+    const connectedAddress = wallet.address || (await wallet.connect());
+    if (!connectedAddress) {
+      setPendingWalletLink(true);
+      return;
     }
+    await completeWalletLink(connectedAddress);
   };
 
   if (!authChecked) {
@@ -208,10 +227,10 @@ export default function DashboardPage() {
               Go to Sign In
             </Link>
             <Link
-              href="/map"
+              href="/marketplace"
               className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
             >
-              Open Public GIS Map
+              Access Land (Verified &amp; Unverified)
             </Link>
           </div>
         </main>
@@ -222,7 +241,7 @@ export default function DashboardPage() {
   const navTabs: Array<{ id: DashboardTab; label: string; count?: number }> = [
     { id: 'workflow', label: 'Applications & Workflow', count: applications.length },
     { id: 'submit', label: 'Register Land & Offline Sync' },
-    { id: 'marketplace', label: 'Buy & Sell Land' },
+    { id: 'marketplace', label: 'Access Land' },
     { id: 'titles', label: 'Land Titles & Section 28', count: titles.length },
     { id: 'mqtt', label: 'MQTT Notifications', count: mqttLogs.length },
     { id: 'audit', label: 'Audit Trail', count: auditLogs.length },
@@ -403,10 +422,7 @@ export default function DashboardPage() {
           <div className="hidden lg:block mt-4 pt-3 border-t border-slate-200 px-2 pb-1 space-y-2 text-xs text-slate-600">
             <div className="font-semibold text-slate-800">Quick Tools</div>
             <Link href="/marketplace" className="block text-emerald-700 hover:underline">
-              Open Public Land Marketplace →
-            </Link>
-            <Link href="/map" className="block text-emerald-700 hover:underline">
-              Inspect Parcels on GIS Map →
+              Access Land (Verified &amp; Unverified) →
             </Link>
             <Link href="/register-land" className="block text-emerald-700 hover:underline">
               Register New Land Parcel →

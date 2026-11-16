@@ -65,6 +65,7 @@ export default function ApplicationsPanel({
       | 'RUN_ORACLE'
       | 'COMPLETE_LEGAL_REVIEW'
       | 'APPROVE_AND_MINT'
+      | 'VERIFY_AND_PUBLISH'
       | 'REJECT'
       | 'CANCEL',
   ) => {
@@ -80,6 +81,9 @@ export default function ApplicationsPanel({
       } else if (action === 'COMPLETE_LEGAL_REVIEW') {
         payload.legalNotes =
           actionNotes.trim() || 'Statutory root of title and survey instrument confirmed.';
+      } else if (action === 'VERIFY_AND_PUBLISH') {
+        payload.registrarNotes =
+          actionNotes.trim() || 'Deed verified by Administrator and published as Verified on Access Land.';
       } else if (action === 'APPROVE_AND_MINT' || action === 'REJECT') {
         payload.registrarNotes =
           actionNotes.trim() ||
@@ -243,10 +247,15 @@ export default function ApplicationsPanel({
               {/* Header */}
               <div className="p-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <h3 className="text-lg font-bold text-slate-900 font-mono tabular-nums">
                       {selected.parcelReference}
                     </h3>
+                    {selected.parcelTitle && (
+                      <span className="text-sm font-semibold text-slate-800">
+                        · {selected.parcelTitle}
+                      </span>
+                    )}
                     <span
                       className={`px-2 py-0.5 text-xs font-mono border rounded ${
                         STATUS_STYLE[selected.status] || STATUS_STYLE.SUBMITTED
@@ -259,8 +268,69 @@ export default function ApplicationsPanel({
                     {selected.address} · {selected.lga}, {selected.state}
                   </p>
                   <p className="text-xs font-mono text-slate-500 mt-1 tabular-nums">
-                    ID: {selected.id} · Applicant: {selected.applicantName} ({selected.applicantEmail})
+                    ID: {selected.id} · Claimant: {selected.claimantName} · Applicant: {selected.applicantName} ({selected.applicantEmail})
                   </p>
+                  {(selected.priceUsd ||
+                    selected.ownershipType ||
+                    selected.surveyPlanNumber ||
+                    selected.deedReference) && (
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-amber-50/70 border border-amber-200 rounded-md p-2.5">
+                      {selected.priceUsd ? (
+                        <div>
+                          <span className="text-slate-500 block">Asking Price</span>
+                          <span className="font-mono font-bold text-slate-900">
+                            ${selected.priceUsd.toLocaleString()} USD
+                            {selected.priceEth ? ` (${selected.priceEth} ETH)` : ''}
+                          </span>
+                        </div>
+                      ) : null}
+                      {selected.ownershipType && (
+                        <div>
+                          <span className="text-slate-500 block">Ownership</span>
+                          <span className="font-medium text-slate-900">{selected.ownershipType}</span>
+                        </div>
+                      )}
+                      {selected.surveyPlanNumber && (
+                        <div>
+                          <span className="text-slate-500 block">Survey Plan</span>
+                          <span className="font-mono text-slate-900">{selected.surveyPlanNumber}</span>
+                        </div>
+                      )}
+                      {selected.deedReference && (
+                        <div>
+                          <span className="text-slate-500 block">Deed / C of O</span>
+                          <span className="font-mono text-slate-900">{selected.deedReference}</span>
+                        </div>
+                      )}
+                      {selected.beaconNumbers && (
+                        <div>
+                          <span className="text-slate-500 block">Beacons</span>
+                          <span className="font-mono text-slate-900">{selected.beaconNumbers}</span>
+                        </div>
+                      )}
+                      {selected.encumbranceStatus && (
+                        <div>
+                          <span className="text-slate-500 block">Encumbrances</span>
+                          <span className="text-slate-900">{selected.encumbranceStatus}</span>
+                        </div>
+                      )}
+                      {selected.zoning && (
+                        <div>
+                          <span className="text-slate-500 block">Zoning</span>
+                          <span className="text-slate-900">{selected.zoning}</span>
+                        </div>
+                      )}
+                      {selected.saleTerms && (
+                        <div className="col-span-2 sm:col-span-4">
+                          <span className="text-slate-500 block">Listing Headline / Sale Terms</span>
+                          <span className="text-slate-800">
+                            {selected.listingHeadline ? `${selected.listingHeadline} — ` : ''}
+                            {selected.saleTerms}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {selected.tokenId !== null && (
                   <div className="text-right">
@@ -402,8 +472,15 @@ export default function ApplicationsPanel({
                       key={doc.id}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs bg-slate-50 border border-slate-200 rounded px-3 py-2"
                     >
-                      <span className="font-medium text-slate-900">
-                        {doc.fileName} ({Math.round(doc.fileSizeBytes / 1024)} KB)
+                      <span className="font-medium text-slate-900 flex flex-wrap items-center gap-1.5">
+                        {doc.category && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-200 rounded">
+                            {doc.category}
+                          </span>
+                        )}
+                        <span>
+                          {doc.fileName} ({Math.round(doc.fileSizeBytes / 1024)} KB)
+                        </span>
                       </span>
                       <span className="font-mono text-[11px] text-slate-500 truncate max-w-xs">
                         SHA-256: {doc.sha256Hash}
@@ -475,14 +552,24 @@ export default function ApplicationsPanel({
                   )}
                   {(user.role === 'REGISTRAR' || user.role === 'LAND_ADMINISTRATOR') &&
                     selected.status !== 'REGISTERED' && (
-                      <button
-                        type="button"
-                        disabled={!!busyAction}
-                        onClick={() => runAction('RUN_ORACLE')}
-                        className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 disabled:opacity-50"
-                      >
-                        Re-run Ownership Oracle
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          disabled={!!busyAction}
+                          onClick={() => runAction('RUN_ORACLE')}
+                          className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          Re-run Ownership Oracle
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!busyAction}
+                          onClick={() => runAction('VERIFY_AND_PUBLISH')}
+                          className="px-3 py-1.5 text-xs font-semibold text-slate-900 bg-amber-300 border border-amber-400 rounded-md hover:bg-amber-400 disabled:opacity-50"
+                        >
+                          Verify Deed &amp; Publish to Access Land
+                        </button>
+                      </>
                     )}
                   {user.role === 'REGISTRAR' && selected.status !== 'REGISTERED' && (
                     <>

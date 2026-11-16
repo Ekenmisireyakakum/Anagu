@@ -15,14 +15,11 @@ export default function SiteFooter() {
           </p>
         </div>
         <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-slate-600">
-          <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap">
-            Buy Land
-          </Link>
           <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap">
             Register Land
           </Link>
-          <Link href="/map" className="hover:text-slate-900 whitespace-nowrap">
-            GIS Map
+          <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap">
+            Access Land
           </Link>
           <Link href="/how-it-works" className="hover:text-slate-900 whitespace-nowrap">
             Workflow

@@ -11,9 +11,10 @@ export async function GET(request: NextRequest) {
   const lga = searchParams.get('lga');
   const status = searchParams.get('status');
   const listingType = searchParams.get('listingType');
+  const verificationStatus = searchParams.get('verificationStatus');
   const q = searchParams.get('q');
 
-  const listings = listLandListings({ lga, status, listingType, q });
+  const listings = listLandListings({ lga, status, listingType, verificationStatus, q });
   const user = getAuthenticatedUser(request);
   const purchases = user ? listUserPurchases(user) : [];
 

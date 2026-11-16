@@ -27,10 +27,13 @@ export async function POST(request: NextRequest) {
         ? 'TRUST_WALLET_ETH'
         : body.paymentMethod === 'METAMASK_ETH'
         ? 'METAMASK_ETH'
+        : body.paymentMethod === 'WEB3_WALLET_ETH'
+        ? 'WEB3_WALLET_ETH'
         : 'REGISTRY_ESCROW';
 
     const result = purchaseLandListing(owner, String(body.listingId), {
       paymentMethod,
+      walletLabel: typeof body.walletLabel === 'string' ? body.walletLabel : undefined,
       walletProof: body.walletProof ?? null,
     });
 

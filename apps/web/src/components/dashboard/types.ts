@@ -41,7 +41,18 @@ export interface WalletProof {
   signerAddress: string;
   chainId?: number | null;
   onChainTxHash?: string;
+  walletName?: string;
 }
+
+export type DocumentCategory =
+  | 'Land Certificate (C of O)'
+  | 'Deed of Assignment'
+  | 'Registered Survey Plan'
+  | "Governor's Consent"
+  | 'Tax / Ground Rent Receipt'
+  | 'Identity / CAC Document'
+  | 'Site Photo'
+  | 'Supporting Document';
 
 export interface DocumentAttachment {
   id: string;
@@ -50,6 +61,7 @@ export interface DocumentAttachment {
   fileSizeBytes: number;
   sha256Hash: string;
   objectKey: string;
+  category?: DocumentCategory | string;
   uploadedAt: string;
 }
 
@@ -86,6 +98,10 @@ export interface SurveyReportRecord {
   submittedAt: string;
 }
 
+export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
+export type LandListingStatus = 'AVAILABLE' | 'SOLD';
+export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use' | 'Agricultural' | 'Industrial';
+
 export interface LandApplicationRecord {
   id: string;
   applicantId: string;
@@ -93,6 +109,21 @@ export interface LandApplicationRecord {
   applicantEmail: string;
   parcelId: string | null;
   parcelReference: string;
+  parcelTitle?: string;
+  ownershipType?: string;
+  zoning?: LandZoning;
+  surveyPlanNumber?: string;
+  deedReference?: string;
+  beaconNumbers?: string;
+  encumbranceStatus?: string;
+  ownerContact?: string;
+  plotDimensions?: string;
+  priceUsd?: number | null;
+  priceNgn?: number | null;
+  priceEth?: string | null;
+  listingHeadline?: string;
+  saleTerms?: string;
+  siteImageUrl?: string;
   state: string;
   lga: string;
   address: string;
@@ -179,25 +210,37 @@ export interface OfflineQueuedApplication {
   queuedAt: string;
   payload: {
     parcelReference: string;
+    parcelTitle?: string;
+    ownershipType?: string;
+    zoning?: LandZoning;
+    surveyPlanNumber?: string;
+    deedReference?: string;
+    beaconNumbers?: string;
+    encumbranceStatus?: string;
+    ownerContact?: string;
+    plotDimensions?: string;
+    priceUsd?: number;
+    listingHeadline?: string;
+    saleTerms?: string;
     state: string;
     lga: string;
     address: string;
     wkt: string;
     claimantName: string;
     nationalId: string;
+    walletAddress?: string;
     documents: Array<{
       fileName: string;
       fileType: string;
       fileSizeBytes: number;
       sha256Hash: string;
+      category?: string;
     }>;
     idempotencyKey: string;
   };
 }
 
-export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
-export type LandListingStatus = 'AVAILABLE' | 'SOLD';
-export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use';
+export type LandListingVerificationStatus = 'VERIFIED' | 'UNVERIFIED';
 
 export interface LandListingRecord {
   id: string;
@@ -210,6 +253,7 @@ export interface LandListingRecord {
   areaSqm: number;
   wkt: string;
   zoning: LandZoning;
+  priceUsd?: number;
   priceNgn: number;
   priceEth: string;
   sellerId: string;
@@ -217,9 +261,16 @@ export interface LandListingRecord {
   sellerAddress: string;
   tokenId: number | null;
   listingType: LandListingType;
+  verificationStatus?: LandListingVerificationStatus;
+  applicationStatus?: ApplicationStatus;
   status: LandListingStatus;
   imageUrl: string;
   description: string;
+  ownershipType?: string;
+  surveyPlanNumber?: string;
+  deedReference?: string;
+  saleTerms?: string;
+  documentCount?: number;
   createdAt: string;
   soldAt: string | null;
   buyerId: string | null;
@@ -238,11 +289,12 @@ export interface LandPurchaseRecord {
   buyerName: string;
   buyerEmail: string;
   buyerWallet: string;
+  priceUsd?: number;
   priceNgn: number;
   priceEth: string;
-  paymentMethod: 'REGISTRY_ESCROW' | 'METAMASK_ETH' | 'TRUST_WALLET_ETH';
+  paymentMethod: 'REGISTRY_ESCROW' | 'METAMASK_ETH' | 'TRUST_WALLET_ETH' | 'WEB3_WALLET_ETH';
+  walletLabel?: string;
   txHash: string;
   tokenId: number;
   purchasedAt: string;
 }
-
