@@ -17,6 +17,13 @@ import {
   ringToWkt,
   wktToJsonRing,
 } from '../../lib/gis-utils';
+import {
+  FALLBACK_MARKET_RATES,
+  ethToUsd,
+  usdToEth,
+  usdToNgn,
+  type MarketRates,
+} from '../../lib/pricing';
 import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import OsmParcelMap from '../map/OsmParcelMap';
@@ -151,6 +158,10 @@ export default function SubmitApplicationPanel({
 
   // Section 2: Price & Deed Upload
   const [priceUsd, setPriceUsd] = useState('');
+  const [priceEthInput, setPriceEthInput] = useState('');
+  const [priceInputMode, setPriceInputMode] = useState<'USD' | 'ETH'>('USD');
+  const [marketRates, setMarketRates] = useState<MarketRates>(FALLBACK_MARKET_RATES);
+  const [refreshingRates, setRefreshingRates] = useState(false);
   const [listingHeadline, setListingHeadline] = useState('');
   const [saleTerms, setSaleTerms] = useState('');
   const [docCategory, setDocCategory] = useState<DocumentCategory>('Land Certificate (C of O)');
@@ -221,18 +232,45 @@ export default function SubmitApplicationPanel({
     return { valid: true as const, wkt, areaSqm, vertices };
   }, [ringText]);
 
-  const parsedPriceUsd = useMemo(() => {
-    const num = Number(priceUsd);
-    return Number.isFinite(num) && num > 0 ? num : 0;
-  }, [priceUsd]);
+  const loadLiveRates = useCallback(async (force = false) => {
+    setRefreshingRates(true);
+    try {
+      const res = await fetch(force ? '/api/pricing?refresh=1' : '/api/pricing');
+      if (res.ok) {
+        const data = (await res.json()) as MarketRates;
+        setMarketRates(data);
+        if (priceInputMode === 'ETH' && priceEthInput) {
+          const usdVal = ethToUsd(priceEthInput, data);
+          if (usdVal > 0) setPriceUsd(String(usdVal));
+        }
+      }
+    } catch {
+      // Keep cached/baseline rates
+    } finally {
+      setRefreshingRates(false);
+    }
+  }, [priceEthInput, priceInputMode]);
 
-  const estimatedNgn = useMemo(() => Math.round(parsedPriceUsd * 1600), [parsedPriceUsd]);
+  useEffect(() => {
+    void loadLiveRates(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const parsedPriceUsd = useMemo(() => {
+    if (priceInputMode === 'ETH') {
+      return ethToUsd(priceEthInput, marketRates);
+    }
+    const num = Number(priceUsd);
+    return Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : 0;
+  }, [marketRates, priceEthInput, priceInputMode, priceUsd]);
+
+  const estimatedNgn = useMemo(
+    () => usdToNgn(parsedPriceUsd, marketRates),
+    [marketRates, parsedPriceUsd],
+  );
   const estimatedEth = useMemo(
-    () =>
-      parsedPriceUsd > 0
-        ? Math.max(0.001, Math.round((parsedPriceUsd / 2500) * 10000) / 10000).toFixed(4)
-        : '0.0000',
-    [parsedPriceUsd],
+    () => (parsedPriceUsd > 0 ? usdToEth(parsedPriceUsd, marketRates) : '0.0000'),
+    [marketRates, parsedPriceUsd],
   );
 
   // Live spatial GIS check whenever valid polygon changes
@@ -969,33 +1007,98 @@ export default function SubmitApplicationPanel({
           {/* Row 1: Price (USD $) | Check Lands Headline | Notes / Sale Terms */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label
-                htmlFor="land-price-usd-input"
-                className="block text-xs font-semibold text-slate-800 mb-1.5"
-              >
-                Land Price (USD $) <span className="text-red-600">*</span>
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
-                  $
-                </span>
-                <input
-                  id="land-price-usd-input"
-                  type="number"
-                  min={1}
-                  step="any"
-                  required
-                  value={priceUsd}
-                  onChange={(e) => setPriceUsd(e.target.value)}
-                  placeholder="e.g. 4250"
-                  className="w-full pl-7 pr-3.5 py-2.5 text-sm font-mono text-slate-900 placeholder:text-slate-400 border border-amber-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label
+                  htmlFor="land-price-usd-input"
+                  className="block text-xs font-semibold text-slate-800"
+                >
+                  {priceInputMode === 'USD' ? 'Land Price (USD $)' : 'Land Price (ETH)'}{' '}
+                  <span className="text-red-600">*</span>
+                </label>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (priceInputMode === 'ETH') {
+                        const usdVal = ethToUsd(priceEthInput, marketRates);
+                        if (usdVal > 0) setPriceUsd(String(usdVal));
+                        setPriceInputMode('USD');
+                      } else {
+                        const nextEth = parsedPriceUsd > 0 ? usdToEth(parsedPriceUsd, marketRates) : '';
+                        setPriceEthInput(nextEth);
+                        setPriceInputMode('ETH');
+                      }
+                    }}
+                    className="font-semibold text-emerald-800 hover:underline"
+                  >
+                    Switch to {priceInputMode === 'USD' ? 'ETH' : 'USD'}
+                  </button>
+                  <span className="text-slate-300">·</span>
+                  <button
+                    type="button"
+                    disabled={refreshingRates}
+                    onClick={() => void loadLiveRates(true)}
+                    className="text-slate-600 hover:text-slate-900 underline disabled:opacity-50"
+                  >
+                    {refreshingRates ? 'Syncing...' : 'Refresh Rate'}
+                  </button>
+                </div>
               </div>
-              {parsedPriceUsd > 0 && (
-                <p className="mt-1 text-[11px] font-mono text-slate-600 tabular-nums">
-                  ≈ {estimatedEth} ETH · NGN {estimatedNgn.toLocaleString('en-NG')}
-                </p>
+              {priceInputMode === 'USD' ? (
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
+                    $
+                  </span>
+                  <input
+                    id="land-price-usd-input"
+                    type="number"
+                    min={1}
+                    step="any"
+                    required
+                    value={priceUsd}
+                    onChange={(e) => setPriceUsd(e.target.value)}
+                    placeholder="e.g. 4250"
+                    className="w-full pl-7 pr-3.5 py-2.5 text-sm font-mono text-slate-900 placeholder:text-slate-400 border border-amber-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    id="land-price-usd-input"
+                    type="number"
+                    min={0.0001}
+                    step="any"
+                    required
+                    value={priceEthInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPriceEthInput(val);
+                      const usdVal = ethToUsd(val, marketRates);
+                      setPriceUsd(usdVal > 0 ? String(usdVal) : '');
+                    }}
+                    placeholder="e.g. 2.3240"
+                    className="w-full pl-3.5 pr-14 py-2.5 text-sm font-mono text-slate-900 placeholder:text-slate-400 border border-amber-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-semibold text-slate-500">
+                    ETH
+                  </span>
+                </div>
               )}
+              {parsedPriceUsd > 0 ? (
+                <p className="mt-1 text-[11px] font-mono text-slate-700 tabular-nums">
+                  {priceInputMode === 'USD'
+                    ? `≈ ${estimatedEth} ETH · NGN ${estimatedNgn.toLocaleString('en-NG')}`
+                    : `≈ $${parsedPriceUsd.toLocaleString('en-US')} USD · NGN ${estimatedNgn.toLocaleString('en-NG')}`}
+                </p>
+              ) : null}
+              <p className="mt-0.5 text-[10px] font-mono text-slate-500 tabular-nums">
+                Live Rate: 1 ETH = $
+                {marketRates.ethUsd.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{' '}
+                USD ({marketRates.source})
+              </p>
             </div>
 
             <div>

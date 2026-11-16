@@ -4,6 +4,7 @@ import {
   listLandListings,
   listUserPurchases,
 } from '../../../lib/anagu-store';
+import { refreshMarketRates } from '../../../lib/pricing';
 import { getAuthenticatedUser } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
@@ -14,11 +15,12 @@ export async function GET(request: NextRequest) {
   const verificationStatus = searchParams.get('verificationStatus');
   const q = searchParams.get('q');
 
+  const rates = await refreshMarketRates(searchParams.get('refreshRates') === '1');
   const listings = listLandListings({ lga, status, listingType, verificationStatus, q });
   const user = getAuthenticatedUser(request);
   const purchases = user ? listUserPurchases(user) : [];
 
-  return NextResponse.json({ listings, purchases });
+  return NextResponse.json({ listings, purchases, rates });
 }
 
 export async function POST(request: NextRequest) {
@@ -28,11 +30,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await refreshMarketRates();
     const body = await request.json();
     const listing = createLandListing(user, {
       tokenId: Number(body.tokenId),
       title: String(body.title || ''),
-      priceNgn: Number(body.priceNgn),
+      priceNgn: body.priceNgn !== undefined ? Number(body.priceNgn) : undefined,
+      priceUsd: body.priceUsd !== undefined ? Number(body.priceUsd) : undefined,
       priceEth: body.priceEth ? String(body.priceEth) : undefined,
       zoning: body.zoning,
       description: body.description ? String(body.description) : undefined,

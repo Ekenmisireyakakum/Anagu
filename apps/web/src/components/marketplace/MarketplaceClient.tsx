@@ -3,6 +3,15 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BOOTSTRAPPED_ADMIN_EMAIL } from '../../lib/firebase';
+import {
+  FALLBACK_MARKET_RATES,
+  ethToUsd,
+  ngnToEth,
+  ngnToUsd,
+  usdToEth,
+  usdToNgn,
+  type MarketRates,
+} from '../../lib/pricing';
 import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import type {
@@ -24,8 +33,12 @@ function formatNgn(amount: number): string {
   return `NGN ${amount.toLocaleString('en-NG')}`;
 }
 
-function formatUsd(priceUsd: number | undefined, priceNgn: number): string {
-  const usd = priceUsd && priceUsd > 0 ? priceUsd : Math.max(500, Math.round(priceNgn / 1600));
+function formatUsd(
+  priceUsd: number | undefined,
+  priceNgn: number,
+  rates: MarketRates = FALLBACK_MARKET_RATES,
+): string {
+  const usd = priceUsd && priceUsd > 0 ? priceUsd : ngnToUsd(priceNgn, rates);
   return `$${usd.toLocaleString('en-US')}`;
 }
 
@@ -56,24 +69,33 @@ export default function MarketplaceClient({
     title: DigitalLandTitle;
   } | null>(null);
 
+  const [marketRates, setMarketRates] = useState<MarketRates>(FALLBACK_MARKET_RATES);
+  const [refreshingRates, setRefreshingRates] = useState(false);
+
   // List owned land form
   const [showListForm, setShowListForm] = useState(false);
   const [listTokenId, setListTokenId] = useState<number>(0);
   const [listTitle, setListTitle] = useState('');
-  const [listPriceNgn, setListPriceNgn] = useState('145000000');
+  const [listCurrency, setListCurrency] = useState<'USD' | 'NGN'>('USD');
+  const [listPriceUsd, setListPriceUsd] = useState('85000');
+  const [listPriceNgn, setListPriceNgn] = useState('114400000');
   const [listZoning, setListZoning] = useState<LandZoning>('Residential');
   const [listDesc, setListDesc] = useState('');
   const [listingBusy, setListingBusy] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRefreshRates = false) => {
     setLoading(true);
     try {
-      const [mktRes, meRes] = await Promise.all([fetch('/api/marketplace'), fetch('/api/auth/me')]);
+      const mktUrl = forceRefreshRates ? '/api/marketplace?refreshRates=1' : '/api/marketplace';
+      const [mktRes, meRes] = await Promise.all([fetch(mktUrl), fetch('/api/auth/me')]);
       if (mktRes.ok) {
         const data = await mktRes.json();
         const items: LandListingRecord[] = data.listings || [];
         setListings(items);
         setPurchases(data.purchases || []);
+        if (data.rates) {
+          setMarketRates(data.rates as MarketRates);
+        }
 
         const params =
           typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -300,7 +322,9 @@ export default function MarketplaceClient({
         body: JSON.stringify({
           tokenId: Number(listTokenId),
           title: listTitle,
-          priceNgn: Number(listPriceNgn),
+          ...(listCurrency === 'USD'
+            ? { priceUsd: Number(listPriceUsd) }
+            : { priceNgn: Number(listPriceNgn) }),
           zoning: listZoning,
           description: listDesc,
         }),
@@ -445,17 +469,50 @@ export default function MarketplaceClient({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Asking Price (NGN)
-              </label>
-              <input
-                type="number"
-                min={100000}
-                required
-                value={listPriceNgn}
-                onChange={(e) => setListPriceNgn(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-md"
-              />
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label className="block text-xs font-medium text-slate-700">
+                  Asking Price ({listCurrency})
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setListCurrency((prev) => (prev === 'USD' ? 'NGN' : 'USD'))
+                  }
+                  className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                >
+                  Use {listCurrency === 'USD' ? 'NGN' : 'USD'}
+                </button>
+              </div>
+              {listCurrency === 'USD' ? (
+                <input
+                  type="number"
+                  min={1}
+                  step="any"
+                  required
+                  value={listPriceUsd}
+                  onChange={(e) => setListPriceUsd(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-md"
+                />
+              ) : (
+                <input
+                  type="number"
+                  min={100000}
+                  required
+                  value={listPriceNgn}
+                  onChange={(e) => setListPriceNgn(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-md"
+                />
+              )}
+              <div className="mt-1 text-[11px] font-mono text-slate-500 tabular-nums">
+                {listCurrency === 'USD'
+                  ? `≈ ${usdToEth(Number(listPriceUsd) || 0, marketRates)} ETH · NGN ${usdToNgn(
+                      Number(listPriceUsd) || 0,
+                      marketRates,
+                    ).toLocaleString('en-NG')}`
+                  : `≈ $${ngnToUsd(Number(listPriceNgn) || 0, marketRates).toLocaleString(
+                      'en-US',
+                    )} USD · ${ngnToEth(Number(listPriceNgn) || 0, marketRates)} ETH`}
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Zoning</label>
@@ -564,13 +621,39 @@ export default function MarketplaceClient({
           </div>
         </div>
 
-        <input
-          type="search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search street, parcel code, verified/unverified, or zoning..."
-          className="w-full xl:w-72 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
-        />
+        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto xl:justify-end">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] font-mono text-emerald-950 tabular-nums">
+            <span>
+              1 ETH = $
+              {marketRates.ethUsd.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              USD
+            </span>
+            <span className="text-emerald-400">·</span>
+            <span>{marketRates.source}</span>
+            <button
+              type="button"
+              disabled={refreshingRates}
+              onClick={async () => {
+                setRefreshingRates(true);
+                await loadData(true);
+                setRefreshingRates(false);
+              }}
+              className="underline font-semibold text-emerald-800 hover:text-emerald-950 disabled:opacity-50"
+            >
+              {refreshingRates ? 'Syncing...' : 'Refresh'}
+            </button>
+          </div>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search street, parcel code, verified/unverified, or zoning..."
+            className="w-full xl:w-72 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
+          />
+        </div>
       </div>
 
       {/* Main Split Grid: Catalog Cards + Contiguous Purchase Module */}
@@ -644,7 +727,7 @@ export default function MarketplaceClient({
                       <div className="pt-3 border-t border-slate-100 flex items-baseline justify-between gap-2">
                         <div>
                           <div className="text-sm font-bold text-slate-900 tabular-nums">
-                            {formatUsd(item.priceUsd, item.priceNgn)} USD ·{' '}
+                            {formatUsd(item.priceUsd, item.priceNgn, marketRates)} USD ·{' '}
                             <span className="font-mono text-emerald-700">{item.priceEth} ETH</span>
                           </div>
                           <div className="text-[11px] font-mono text-slate-500 tabular-nums">
@@ -722,7 +805,7 @@ export default function MarketplaceClient({
                     <div>
                       <div className="text-xs text-slate-500">Acquisition Price</div>
                       <div className="text-2xl font-bold text-slate-900 tabular-nums">
-                        {formatUsd(selectedListing.priceUsd, selectedListing.priceNgn)} USD
+                        {formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)} USD
                       </div>
                       <div className="text-xs font-mono text-slate-600 tabular-nums">
                         {formatNgn(selectedListing.priceNgn)}
@@ -730,6 +813,14 @@ export default function MarketplaceClient({
                     </div>
                     <div className="text-right font-mono text-xs text-slate-600 tabular-nums">
                       <div className="font-semibold text-emerald-700">{selectedListing.priceEth} ETH</div>
+                      <div className="text-[11px] text-slate-500">
+                        ≈ ${ethToUsd(selectedListing.priceEth, marketRates).toLocaleString('en-US')} USD @ $
+                        {marketRates.ethUsd.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                        /ETH
+                      </div>
                       <div>{selectedListing.areaSqm.toLocaleString()} m² · {selectedListing.zoning}</div>
                     </div>
                   </div>
@@ -920,7 +1011,7 @@ export default function MarketplaceClient({
                             {buying
                               ? 'Authorizing Web3 Settlement...'
                               : wallet.isConnected
-                              ? `Buy with ${wallet.walletLabel} · ${selectedListing.priceEth} ETH (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn)})`
+                              ? `Buy with ${wallet.walletLabel} · ${selectedListing.priceEth} ETH (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)})`
                               : `Connect & Buy with Any Web3 Wallet · ${selectedListing.priceEth} ETH`}
                           </button>
 
@@ -951,7 +1042,7 @@ export default function MarketplaceClient({
                           >
                             {buying
                               ? 'Settling & Issuing ERC-721 Title...'
-                              : `Settle via Registry Escrow · ${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn)} (${formatNgn(selectedListing.priceNgn)})`}
+                              : `Settle via Registry Escrow · ${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)} (${formatNgn(selectedListing.priceNgn)})`}
                           </button>
                         </div>
                       )}
@@ -1047,7 +1138,7 @@ export default function MarketplaceClient({
                       #{p.tokenId}
                     </td>
                     <td className="px-4 py-3 font-mono tabular-nums text-slate-900">
-                      {formatUsd(p.priceUsd, p.priceNgn)} · {formatNgn(p.priceNgn)}
+                      {formatUsd(p.priceUsd, p.priceNgn, marketRates)} · {p.priceEth} ETH · {formatNgn(p.priceNgn)}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {p.walletLabel || p.paymentMethod}

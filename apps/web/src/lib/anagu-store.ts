@@ -7,6 +7,14 @@ import {
   type LandParcelRecord,
   type SpatialVerificationResult,
 } from './mock-gis-store';
+import {
+  getCachedMarketRates,
+  ngnToEth,
+  ngnToUsd,
+  usdToEth,
+  usdToNgn,
+  type MarketRates,
+} from './pricing';
 
 export type UserRole =
   | 'CITIZEN'
@@ -119,6 +127,7 @@ export interface LandApplicationRecord {
   priceUsd?: number | null;
   priceNgn?: number | null;
   priceEth?: string | null;
+  priceAnchorCurrency?: 'USD' | 'NGN';
   listingHeadline?: string;
   saleTerms?: string;
   siteImageUrl?: string;
@@ -233,6 +242,7 @@ export interface LandListingRecord {
   priceUsd?: number;
   priceNgn: number;
   priceEth: string;
+  priceAnchorCurrency?: 'USD' | 'NGN';
   sellerId: string;
   sellerName: string;
   sellerAddress: string;
@@ -488,8 +498,9 @@ function initStore(): AnaguGlobalStore {
       surveyPlanNumber: 'LS/D/LA/2026/044',
       deedReference: 'DEED-LK-044',
       priceUsd: 78500,
-      priceNgn: 125_600_000,
-      priceEth: '0.0175',
+      priceNgn: usdToNgn(78500),
+      priceEth: usdToEth(78500),
+      priceAnchorCurrency: 'USD',
       saleTerms: 'Survey & Oracle cleared; awaiting final Registrar deed verification.',
       siteImageUrl: '/images/parcel_lekki_residential.jpg',
       state: 'Lagos',
@@ -553,8 +564,9 @@ function initStore(): AnaguGlobalStore {
       surveyPlanNumber: 'LS/D/IK/2026/088',
       deedReference: 'COFO-IK-088',
       priceUsd: 62000,
-      priceNgn: 99_200_000,
-      priceEth: '0.0140',
+      priceNgn: usdToNgn(62000),
+      priceEth: usdToEth(62000),
+      priceAnchorCurrency: 'USD',
       saleTerms: 'Submitted directly by owner; spatial & deed verification pending.',
       siteImageUrl: '/images/parcel_ikeja_gra.jpg',
       state: 'Lagos',
@@ -904,11 +916,20 @@ function buildSeedListings(
     });
   }
 
-  return result.map((item) => ({
-    ...item,
-    verificationStatus: 'VERIFIED' as const,
-    priceUsd: item.priceUsd ?? Math.max(500, Math.round(item.priceNgn / 1600)),
-  }));
+  const rates = getCachedMarketRates();
+  return result.map((item) => {
+    const priceNgn = item.priceNgn;
+    const priceUsd = ngnToUsd(priceNgn, rates);
+    const priceEth = ngnToEth(priceNgn, rates);
+    return {
+      ...item,
+      verificationStatus: 'VERIFIED' as const,
+      priceAnchorCurrency: 'NGN' as const,
+      priceUsd,
+      priceNgn,
+      priceEth,
+    };
+  });
 }
 
 const g = globalThis as typeof globalThis & { __anaguStore?: AnaguGlobalStore };
@@ -1441,14 +1462,13 @@ export function submitLandApplication(
   const appId = crypto.randomUUID();
   const spatial = verifyWktParcel(input.wkt, appId);
   const now = new Date().toISOString();
+  const rates = getCachedMarketRates();
   const parsedPriceUsd =
     typeof input.priceUsd === 'number' && Number.isFinite(input.priceUsd) && input.priceUsd > 0
-      ? Math.round(input.priceUsd)
+      ? Math.round(input.priceUsd * 100) / 100
       : null;
-  const computedNgn = parsedPriceUsd ? Math.round(parsedPriceUsd * 1600) : null;
-  const computedEth = parsedPriceUsd
-    ? Math.max(0.001, Math.round((parsedPriceUsd / 2500) * 10000) / 10000).toFixed(4)
-    : null;
+  const computedNgn = parsedPriceUsd ? usdToNgn(parsedPriceUsd, rates) : null;
+  const computedEth = parsedPriceUsd ? usdToEth(parsedPriceUsd, rates) : null;
 
   const app: LandApplicationRecord = {
     id: appId,
@@ -1469,6 +1489,7 @@ export function submitLandApplication(
     priceUsd: parsedPriceUsd,
     priceNgn: computedNgn,
     priceEth: computedEth,
+    priceAnchorCurrency: 'USD',
     listingHeadline: input.listingHeadline?.trim() || undefined,
     saleTerms: input.saleTerms?.trim() || undefined,
     siteImageUrl: input.siteImageUrl?.trim() || undefined,
@@ -1546,11 +1567,10 @@ function publishApplicationToCheckLands(
     return existing;
   }
 
+  const rates = getCachedMarketRates();
   const priceUsd = app.priceUsd && app.priceUsd > 0 ? app.priceUsd : 4250;
-  const priceNgn = app.priceNgn && app.priceNgn > 0 ? app.priceNgn : Math.round(priceUsd * 1600);
-  const priceEth =
-    app.priceEth ||
-    Math.max(0.001, Math.round((priceUsd / 2500) * 10000) / 10000).toFixed(4);
+  const priceNgn = usdToNgn(priceUsd, rates);
+  const priceEth = usdToEth(priceUsd, rates);
 
   const listing: LandListingRecord = {
     id: crypto.randomUUID(),
@@ -1569,6 +1589,7 @@ function publishApplicationToCheckLands(
     priceUsd,
     priceNgn,
     priceEth,
+    priceAnchorCurrency: 'USD',
     sellerId: title.ownerId,
     sellerName: title.ownerName,
     sellerAddress: title.ownerAddress,
@@ -2235,16 +2256,52 @@ export function revokeLandTitle(
   return title;
 }
 
+function syncListingWithRates(
+  item: LandListingRecord,
+  rates: MarketRates = getCachedMarketRates(),
+): LandListingRecord {
+  if (item.status === 'SOLD') return item;
+  const anchor = item.priceAnchorCurrency || (item.priceUsd && item.priceUsd > 0 && !item.priceNgn ? 'USD' : 'NGN');
+  if (anchor === 'USD' && item.priceUsd && item.priceUsd > 0) {
+    return {
+      ...item,
+      priceAnchorCurrency: 'USD',
+      priceUsd: item.priceUsd,
+      priceNgn: usdToNgn(item.priceUsd, rates),
+      priceEth: usdToEth(item.priceUsd, rates),
+    };
+  }
+  const ngn = item.priceNgn > 0 ? item.priceNgn : usdToNgn(item.priceUsd || 4250, rates);
+  return {
+    ...item,
+    priceAnchorCurrency: 'NGN',
+    priceUsd: ngnToUsd(ngn, rates),
+    priceNgn: ngn,
+    priceEth: ngnToEth(ngn, rates),
+  };
+}
+
+export function syncApplicationWithRates(
+  app: LandApplicationRecord,
+  rates: MarketRates = getCachedMarketRates(),
+): LandApplicationRecord {
+  if (!app.priceUsd || app.priceUsd <= 0) return app;
+  return {
+    ...app,
+    priceNgn: usdToNgn(app.priceUsd, rates),
+    priceEth: usdToEth(app.priceUsd, rates),
+  };
+}
+
 function buildUnverifiedListingFromApp(
   app: LandApplicationRecord,
   users: UserAccount[],
 ): LandListingRecord {
   const applicant = users.find((u) => u.id === app.applicantId);
+  const rates = getCachedMarketRates();
   const priceUsd = app.priceUsd && app.priceUsd > 0 ? app.priceUsd : 4250;
-  const priceNgn = app.priceNgn && app.priceNgn > 0 ? app.priceNgn : Math.round(priceUsd * 1600);
-  const priceEth =
-    app.priceEth ||
-    Math.max(0.001, Math.round((priceUsd / 2500) * 10000) / 10000).toFixed(4);
+  const priceNgn = usdToNgn(priceUsd, rates);
+  const priceEth = usdToEth(priceUsd, rates);
   const areaSqm =
     app.spatialVerification?.areaSqm && app.spatialVerification.areaSqm > 0
       ? app.spatialVerification.areaSqm
@@ -2267,6 +2324,7 @@ function buildUnverifiedListingFromApp(
     priceUsd,
     priceNgn,
     priceEth,
+    priceAnchorCurrency: 'USD',
     sellerId: app.applicantId,
     sellerName: app.claimantName || app.applicantName,
     sellerAddress:
@@ -2313,10 +2371,16 @@ export function listLandListings(filters?: {
     store.purchases = [];
   }
 
-  const verifiedListings: LandListingRecord[] = store.listings.map((item) => ({
-    ...item,
-    verificationStatus: item.verificationStatus || 'VERIFIED',
-  }));
+  const rates = getCachedMarketRates();
+  const verifiedListings: LandListingRecord[] = store.listings.map((item) =>
+    syncListingWithRates(
+      {
+        ...item,
+        verificationStatus: item.verificationStatus || 'VERIFIED',
+      },
+      rates,
+    ),
+  );
 
   const listedRefs = new Set(
     verifiedListings.map((item) => item.parcelReference.toLowerCase()),
@@ -2369,7 +2433,8 @@ export function createLandListing(
   input: {
     tokenId: number;
     title: string;
-    priceNgn: number;
+    priceNgn?: number;
+    priceUsd?: number;
     priceEth?: string;
     zoning?: LandZoning;
     description?: string;
@@ -2400,9 +2465,21 @@ export function createLandListing(
     throw new Error(`Title #${titleRecord.tokenId} is already listed on the marketplace`);
   }
 
-  if (!Number.isFinite(input.priceNgn) || input.priceNgn <= 0) {
-    throw new Error('A valid listing price in NGN is required');
+  const rates = getCachedMarketRates();
+  const hasUsd = typeof input.priceUsd === 'number' && Number.isFinite(input.priceUsd) && input.priceUsd > 0;
+  const hasNgn = typeof input.priceNgn === 'number' && Number.isFinite(input.priceNgn) && input.priceNgn > 0;
+  if (!hasUsd && !hasNgn) {
+    throw new Error('A valid listing price in USD or NGN is required');
   }
+
+  const priceAnchorCurrency: 'USD' | 'NGN' = hasUsd ? 'USD' : 'NGN';
+  const resolvedUsd = hasUsd
+    ? Math.round(input.priceUsd! * 100) / 100
+    : ngnToUsd(input.priceNgn!, rates);
+  const resolvedNgn = hasNgn ? Math.round(input.priceNgn!) : usdToNgn(resolvedUsd, rates);
+  const resolvedEth =
+    input.priceEth?.trim() ||
+    (hasUsd ? usdToEth(resolvedUsd, rates) : ngnToEth(resolvedNgn, rates));
 
   const matchingApp = store.applications.find((a) => a.id === titleRecord.applicationId);
   const matchingParcel = getAllEffectiveParcels().find(
@@ -2423,11 +2500,10 @@ export function createLandListing(
     areaSqm: titleRecord.areaSqm,
     wkt,
     zoning: input.zoning || 'Residential',
-    priceUsd: Math.max(500, Math.round(input.priceNgn / 1600)),
-    priceNgn: Math.round(input.priceNgn),
-    priceEth:
-      input.priceEth?.trim() ||
-      Math.max(0.005, Math.round((input.priceNgn / 7_000_000_000) * 10000) / 10000).toFixed(4),
+    priceUsd: resolvedUsd,
+    priceNgn: resolvedNgn,
+    priceEth: resolvedEth,
+    priceAnchorCurrency,
     sellerId: titleRecord.ownerId,
     sellerName: titleRecord.ownerName,
     sellerAddress: titleRecord.ownerAddress,
@@ -2672,6 +2748,10 @@ export function purchaseLandListing(
     store.parcelStatusOverrides.set(listing.parcelId, 'active');
   }
 
+  const syncedListing = syncListingWithRates(listing, getCachedMarketRates());
+  listing.priceUsd = syncedListing.priceUsd;
+  listing.priceNgn = syncedListing.priceNgn;
+  listing.priceEth = syncedListing.priceEth;
   listing.status = 'SOLD';
   listing.tokenId = titleRecord.tokenId;
   listing.soldAt = now;
@@ -2690,7 +2770,7 @@ export function purchaseLandListing(
     buyerName: user.fullName,
     buyerEmail: user.email,
     buyerWallet,
-    priceUsd: listing.priceUsd ?? Math.max(500, Math.round(listing.priceNgn / 1600)),
+    priceUsd: listing.priceUsd ?? ngnToUsd(listing.priceNgn),
     priceNgn: listing.priceNgn,
     priceEth: listing.priceEth,
     paymentMethod: input.paymentMethod,

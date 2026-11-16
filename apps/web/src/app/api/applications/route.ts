@@ -4,7 +4,9 @@ import {
   getAnaguStore,
   resolveOrCreateWalletOwner,
   submitLandApplication,
+  syncApplicationWithRates,
 } from '../../../lib/anagu-store';
+import { refreshMarketRates } from '../../../lib/pricing';
 import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
@@ -12,15 +14,18 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
   }
+  const rates = await refreshMarketRates();
   const store = getAnaguStore();
-  if (user.role === 'CITIZEN') {
-    return NextResponse.json(store.applications.filter((a) => a.applicantId === user.id));
-  }
-  return NextResponse.json(store.applications);
+  const list =
+    user.role === 'CITIZEN'
+      ? store.applications.filter((a) => a.applicantId === user.id)
+      : store.applications;
+  return NextResponse.json(list.map((app) => syncApplicationWithRates(app, rates)));
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await refreshMarketRates();
     const body = await request.json();
     const sessionUser = getAuthenticatedUser(request);
     const applicant =

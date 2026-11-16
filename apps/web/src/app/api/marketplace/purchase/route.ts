@@ -4,10 +4,12 @@ import {
   purchaseLandListing,
   resolveOrCreateWalletOwner,
 } from '../../../../lib/anagu-store';
+import { refreshMarketRates } from '../../../../lib/pricing';
 import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
+    await refreshMarketRates();
     const body = await request.json();
     if (!body?.listingId) {
       return NextResponse.json({ message: 'listingId is required' }, { status: 400 });
