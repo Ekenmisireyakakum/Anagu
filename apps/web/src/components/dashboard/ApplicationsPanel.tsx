@@ -1,6 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ethers } from 'ethers';
+import { useFirebase } from '../FirebaseContext';
+import { useWallet } from '../WalletContext';
 import type { LandApplicationRecord, SafeUser } from './types';
 
 interface ApplicationsPanelProps {
@@ -26,10 +29,13 @@ export default function ApplicationsPanel({
   applications,
   onRefresh,
 }: ApplicationsPanelProps) {
+  const wallet = useWallet();
+  const firebase = useFirebase();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedId, setSelectedId] = useState<string>(applications[0]?.id || '');
   const [actionNotes, setActionNotes] = useState('');
+  const [signWithMetaMask, setSignWithMetaMask] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -80,6 +86,19 @@ export default function ApplicationsPanel({
           (action === 'APPROVE_AND_MINT'
             ? 'Approved by Registrar for Besu ERC-721 title minting.'
             : 'Rejected during statutory review.');
+
+        if (action === 'APPROVE_AND_MINT' && wallet.isConnected && signWithMetaMask) {
+          const docConcat = selected.documents.map((d) => d.sha256Hash).join(':');
+          payload.walletProof = await wallet.authorizeRegistryAction({
+            kind: 'REGISTER_LAND',
+            parcelReference: selected.parcelReference,
+            ownerAddress: user.walletAddress,
+            spatialHash: ethers.keccak256(ethers.toUtf8Bytes(selected.wkt)),
+            ownerReferenceHash: ethers.keccak256(ethers.toUtf8Bytes(selected.applicantId)),
+            documentHash: ethers.keccak256(ethers.toUtf8Bytes(docConcat)),
+            actorRole: user.role,
+          });
+        }
       }
 
       const res = await fetch(`/api/applications/${selected.id}/action`, {
@@ -90,6 +109,9 @@ export default function ApplicationsPanel({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || `Action ${action} failed`);
+      }
+      if (firebase.firebaseUser && data?.id) {
+        await firebase.syncApplication(data as LandApplicationRecord).catch(() => {});
       }
       setActionNotes('');
       setFeedback({
@@ -407,10 +429,21 @@ export default function ApplicationsPanel({
 
               {/* Role Action Controls */}
               <div className="p-5 bg-slate-50 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                     Workflow Actions (Enforced Server-Side for {user.role})
                   </h4>
+                  {user.role === 'REGISTRAR' && wallet.isConnected && (
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={signWithMetaMask}
+                        onChange={(e) => setSignWithMetaMask(e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                      />
+                      Sign Mint with MetaMask ({wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)})
+                    </label>
+                  )}
                 </div>
                 <input
                   type="text"

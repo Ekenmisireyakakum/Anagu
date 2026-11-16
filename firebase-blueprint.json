@@ -1,0 +1,733 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Operational user profile and MetaMask wallet verification metadata (non-PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "Firebase Auth UID."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Display name for registry workflows."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["CITIZEN", "SURVEYOR", "REGISTRAR", "LAND_ADMINISTRATOR", "GOVERNOR"],
+          "description": "Assigned statutory RBAC role."
+        },
+        "walletAddress": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "maxLength": 42,
+          "description": "Checksummed EVM wallet address linked via MetaMask."
+        },
+        "walletVerified": {
+          "type": "boolean",
+          "description": "Whether wallet ownership was cryptographically verified."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Account active flag."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "role", "walletAddress", "walletVerified", "isActive", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record for user contact details.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "Owner Firebase Auth UID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200,
+          "description": "User email address."
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "User phone number."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "phone", "createdAt", "updatedAt"]
+    },
+    "AdminGrant": {
+      "title": "AdminGrant",
+      "description": "Trusted administrator lookup document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "grantedAt"]
+    },
+    "LandApplication": {
+      "title": "LandApplication",
+      "description": "Land title registration application with GIS and oracle verification state.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "applicantId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "applicantName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "parcelReference": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "state": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "lga": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "address": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240
+        },
+        "wkt": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 4000
+        },
+        "claimantName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "nationalIdHash": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "documentHashes": {
+          "type": "array",
+          "description": "SHA-256 document hashes (max 10)."
+        },
+        "documentNames": {
+          "type": "array",
+          "description": "Uploaded document filenames (max 10)."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "DRAFT",
+            "SUBMITTED",
+            "UNDER_SPATIAL_REVIEW",
+            "UNDER_OWNERSHIP_VERIFICATION",
+            "PENDING_LEGAL_VERIFICATION",
+            "PENDING_REGISTRAR_APPROVAL",
+            "APPROVED",
+            "REGISTERED",
+            "REJECTED",
+            "REVOKED",
+            "CANCELLED"
+          ]
+        },
+        "spatialPassed": {
+          "type": "boolean"
+        },
+        "areaSqm": {
+          "type": "number"
+        },
+        "surveyConfirmed": {
+          "type": "boolean"
+        },
+        "oracleOutcome": {
+          "type": "string",
+          "enum": ["PENDING", "VERIFIED", "DISPUTED", "INCONCLUSIVE"]
+        },
+        "legalVerified": {
+          "type": "boolean"
+        },
+        "tokenId": {
+          "type": "number"
+        },
+        "txHash": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "applicantId",
+        "applicantName",
+        "parcelReference",
+        "state",
+        "lga",
+        "address",
+        "wkt",
+        "claimantName",
+        "nationalIdHash",
+        "documentHashes",
+        "documentNames",
+        "status",
+        "spatialPassed",
+        "areaSqm",
+        "surveyConfirmed",
+        "oracleOutcome",
+        "legalVerified",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LandTitle": {
+      "title": "LandTitle",
+      "description": "Issued ERC-721 digital land title record and Section 28 revocation state.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "tokenId": {
+          "type": "number"
+        },
+        "applicationId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "parcelReference": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "address": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240
+        },
+        "lga": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "state": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "areaSqm": {
+          "type": "number"
+        },
+        "ownerId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "ownerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "ownerAddress": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "maxLength": 42
+        },
+        "spatialHash": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "documentHash": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "txHash": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "isRevoked": {
+          "type": "boolean"
+        },
+        "revocationGrounds": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "revocationReference": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "revocationJustification": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "tokenId",
+        "applicationId",
+        "parcelReference",
+        "address",
+        "lga",
+        "state",
+        "areaSqm",
+        "ownerId",
+        "ownerName",
+        "ownerAddress",
+        "spatialHash",
+        "documentHash",
+        "txHash",
+        "isRevoked",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable registry audit log event.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "actorId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "actorRole": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "entityType": {
+          "type": "string",
+          "enum": ["APPLICATION", "TITLE", "PARCEL", "USER", "SYSTEM"]
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["SUCCESS", "DENIED", "FAILED"]
+        },
+        "details": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "actorId",
+        "actorName",
+        "actorRole",
+        "action",
+        "entityType",
+        "entityId",
+        "outcome",
+        "details",
+        "createdAt"
+      ]
+    },
+    "ContactInquiry": {
+      "title": "ContactInquiry",
+      "description": "Registry contact desk inquiry submission.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "senderUid": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "organization": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "senderUid", "name", "organization", "subject", "message", "createdAt"]
+    },
+    "ConnectionCheck": {
+      "title": "ConnectionCheck",
+      "description": "Read-only connection verification probe document.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "required": ["status"]
+    },
+    "LandListing": {
+      "title": "LandListing",
+      "description": "Verified Lagos land parcel listed for acquisition on the ANAGU marketplace.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "parcelReference": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "address": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240
+        },
+        "lga": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "state": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "areaSqm": {
+          "type": "number"
+        },
+        "zoning": {
+          "type": "string",
+          "enum": ["Residential", "Commercial", "Mixed-Use"]
+        },
+        "priceNgn": {
+          "type": "number"
+        },
+        "priceEth": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "sellerId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "sellerAddress": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "maxLength": 42
+        },
+        "listingType": {
+          "type": "string",
+          "enum": ["STATE_ALLOCATION", "VERIFIED_RESALE"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["AVAILABLE", "SOLD"]
+        },
+        "tokenId": {
+          "type": "number"
+        },
+        "buyerId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "buyerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "purchaseTxHash": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "parcelReference",
+        "title",
+        "address",
+        "lga",
+        "state",
+        "areaSqm",
+        "zoning",
+        "priceNgn",
+        "priceEth",
+        "sellerId",
+        "sellerName",
+        "sellerAddress",
+        "listingType",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LandPurchase": {
+      "title": "LandPurchase",
+      "description": "Immutable receipt record for a verified land acquisition on ANAGU.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "listingId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "parcelReference": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "address": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240
+        },
+        "lga": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64
+        },
+        "buyerId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "buyerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "buyerWallet": {
+          "type": "string",
+          "pattern": "^0x[a-fA-F0-9]{40}$",
+          "maxLength": 42
+        },
+        "priceNgn": {
+          "type": "number"
+        },
+        "priceEth": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["REGISTRY_ESCROW", "METAMASK_ETH"]
+        },
+        "txHash": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "tokenId": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "listingId",
+        "parcelReference",
+        "title",
+        "address",
+        "lga",
+        "buyerId",
+        "buyerName",
+        "buyerWallet",
+        "priceNgn",
+        "priceEth",
+        "paymentMethod",
+        "txHash",
+        "tokenId",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Non-PII operational user profile and MetaMask wallet verification status."
+    },
+    "/users/{userId}/private/{infoId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII subcollection storing user email and phone."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminGrant" },
+      "description": "Trusted administrator role lookup collection."
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/LandApplication" },
+      "description": "Land title applications submitted by users."
+    },
+    "/titles/{titleId}": {
+      "schema": { "$ref": "#/entities/LandTitle" },
+      "description": "Minted ERC-721 digital land titles."
+    },
+    "/listings/{listingId}": {
+      "schema": { "$ref": "#/entities/LandListing" },
+      "description": "Verified land parcels offered for state allocation or resale acquisition."
+    },
+    "/purchases/{purchaseId}": {
+      "schema": { "$ref": "#/entities/LandPurchase" },
+      "description": "Immutable land acquisition receipts."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable registry audit trail."
+    },
+    "/contacts/{contactId}": {
+      "schema": { "$ref": "#/entities/ContactInquiry" },
+      "description": "Registry inquiry submissions."
+    },
+    "/test/{docId}": {
+      "schema": { "$ref": "#/entities/ConnectionCheck" },
+      "description": "Firestore connectivity check path."
+    }
+  }
+}

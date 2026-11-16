@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
+import { useFirebase } from '../../components/FirebaseContext';
+import { useWallet } from '../../components/WalletContext';
 import ApplicationsPanel from '../../components/dashboard/ApplicationsPanel';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
 import SubmitApplicationPanel from '../../components/dashboard/SubmitApplicationPanel';
 import TitlesAndGovernancePanel from '../../components/dashboard/TitlesAndGovernancePanel';
+import MarketplaceClient from '../../components/marketplace/MarketplaceClient';
 import type {
   AuditLogEntry,
   DigitalLandTitle,
@@ -16,10 +19,12 @@ import type {
   SafeUser,
 } from '../../components/dashboard/types';
 
-type DashboardTab = 'workflow' | 'submit' | 'titles' | 'mqtt' | 'audit' | 'users';
+type DashboardTab = 'workflow' | 'submit' | 'marketplace' | 'titles' | 'mqtt' | 'audit' | 'users';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const wallet = useWallet();
+  const firebase = useFirebase();
   const [user, setUser] = useState<SafeUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('workflow');
@@ -29,6 +34,8 @@ export default function DashboardPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [usersList, setUsersList] = useState<SafeUser[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [linkingWallet, setLinkingWallet] = useState(false);
+  const [walletNotice, setWalletNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   const loadWorkspaceData = useCallback(async (currentUser: SafeUser) => {
     setLoadingData(true);
@@ -69,7 +76,18 @@ export default function DashboardPage() {
         const me = data.user as SafeUser;
         setUser(me);
         setAuthChecked(true);
-        if (me.role === 'GOVERNOR') {
+        const tabParam =
+          typeof window !== 'undefined'
+            ? (new URLSearchParams(window.location.search).get('tab') as DashboardTab | null)
+            : null;
+        if (
+          tabParam &&
+          ['workflow', 'submit', 'marketplace', 'titles', 'mqtt', 'audit', 'users'].includes(
+            tabParam,
+          )
+        ) {
+          setActiveTab(tabParam);
+        } else if (me.role === 'GOVERNOR') {
           setActiveTab('titles');
         } else if (me.role === 'LAND_ADMINISTRATOR') {
           setActiveTab('audit');
@@ -86,8 +104,80 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
+    if (firebase.firebaseUser) {
+      await firebase.signOutFirebase().catch(() => {});
+    }
     router.push('/login');
     router.refresh();
+  };
+
+  const handleConnectFirebase = async () => {
+    setWalletNotice(null);
+    const fbUser = await firebase.signInWithGoogle(user?.walletAddress || wallet.address);
+    if (fbUser) {
+      setWalletNotice({
+        ok: true,
+        text: `Connected to Cloud Firestore as ${fbUser.email}. Registry mutations will now sync to Firestore.`,
+      });
+    } else if (firebase.authError) {
+      setWalletNotice({ ok: false, text: firebase.authError });
+    }
+  };
+
+  const handleLinkMetaMask = async () => {
+    if (!user) return;
+    setWalletNotice(null);
+    wallet.clearError();
+    setLinkingWallet(true);
+    try {
+      const connectedAddress = wallet.address || (await wallet.connect());
+      if (!connectedAddress) {
+        return;
+      }
+
+      const nonceRes = await fetch('/api/auth/metamask/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: connectedAddress }),
+      });
+      const challenge = await nonceRes.json();
+      if (!nonceRes.ok) {
+        throw new Error(challenge.message || 'Failed to issue wallet challenge');
+      }
+
+      const signature = await wallet.signMessage(challenge.message, connectedAddress);
+
+      const verifyRes = await fetch('/api/auth/metamask/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: connectedAddress,
+          signature,
+          mode: 'link',
+        }),
+      });
+      const verified = await verifyRes.json();
+      if (!verifyRes.ok) {
+        throw new Error(verified.message || 'Failed to verify MetaMask signature');
+      }
+
+      setUser(verified.user as SafeUser);
+      if (firebase.firebaseUser) {
+        await firebase.syncWalletProfile(connectedAddress, true).catch(() => {});
+      }
+      setWalletNotice({
+        ok: true,
+        text: `MetaMask wallet ${connectedAddress} cryptographically linked to ${verified.user.email} (${verified.user.role}).`,
+      });
+      await loadWorkspaceData(verified.user as SafeUser);
+    } catch (err) {
+      setWalletNotice({
+        ok: false,
+        text: err instanceof Error ? err.message : 'MetaMask linking failed',
+      });
+    } finally {
+      setLinkingWallet(false);
+    }
   };
 
   if (!authChecked) {
@@ -131,7 +221,8 @@ export default function DashboardPage() {
 
   const navTabs: Array<{ id: DashboardTab; label: string; count?: number }> = [
     { id: 'workflow', label: 'Applications & Workflow', count: applications.length },
-    { id: 'submit', label: 'New Application & Offline Sync' },
+    { id: 'submit', label: 'Register Land & Offline Sync' },
+    { id: 'marketplace', label: 'Buy & Sell Land' },
     { id: 'titles', label: 'Land Titles & Section 28', count: titles.length },
     { id: 'mqtt', label: 'MQTT Notifications', count: mqttLogs.length },
     { id: 'audit', label: 'Audit Trail', count: auditLogs.length },
@@ -160,10 +251,93 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <span className="font-mono text-slate-500 hidden sm:inline">
-              Wallet: {user.walletAddress.slice(0, 10)}...{user.walletAddress.slice(-6)}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+            <span
+              title={user.walletAddress}
+              className={`px-2.5 py-1 font-mono rounded border ${
+                user.walletVerified &&
+                wallet.isConnected &&
+                wallet.address?.toLowerCase() === user.walletAddress.toLowerCase()
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
+              }`}
+            >
+              Registry Wallet: {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
+              {user.walletVerified ? ' · Verified' : ''}
             </span>
+
+            {wallet.isConnected ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => wallet.openModal()}
+                  className="px-2.5 py-1 font-mono bg-amber-50 text-amber-900 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
+                >
+                  MetaMask: {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
+                  {wallet.balanceEth !== null ? ` (${wallet.balanceEth} ETH)` : ''}
+                </button>
+                {!wallet.isBesuNetwork && (
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchToBesu()}
+                    className="px-2.5 py-1.5 font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded hover:bg-slate-200"
+                  >
+                    Switch to Besu (1337)
+                  </button>
+                )}
+                {wallet.isBesuNetwork && (
+                  <span className="px-2 py-1 font-mono text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                    Besu QBFT (1337)
+                  </span>
+                )}
+                {wallet.address?.toLowerCase() !== user.walletAddress.toLowerCase() || !user.walletVerified ? (
+                  <button
+                    type="button"
+                    disabled={linkingWallet}
+                    onClick={handleLinkMetaMask}
+                    className="px-3 py-1.5 font-semibold text-slate-900 bg-amber-100 border border-amber-300 rounded hover:bg-amber-200 disabled:opacity-50"
+                  >
+                    {linkingWallet ? 'Signing...' : 'Link Active MetaMask'}
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={linkingWallet || wallet.isConnecting}
+                  onClick={handleLinkMetaMask}
+                  className="px-3 py-1.5 font-semibold text-slate-900 bg-amber-100 border border-amber-300 rounded hover:bg-amber-200 disabled:opacity-50"
+                >
+                  {linkingWallet || wallet.isConnecting ? 'Connecting...' : 'Connect & Link MetaMask'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => wallet.openModal()}
+                  className="px-2.5 py-1.5 font-medium text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50"
+                >
+                  QR / Options
+                </button>
+              </div>
+            )}
+
+            {firebase.firebaseUser ? (
+              <span
+                title={`Firestore Docs: ${firebase.firestoreCounts.applications} apps, ${firebase.firestoreCounts.titles} titles`}
+                className="px-2.5 py-1 font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 rounded"
+              >
+                Firestore Sync: {firebase.firebaseUser.email}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectFirebase}
+                className="px-3 py-1.5 font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50"
+              >
+                Connect Firestore
+              </button>
+            )}
+
             <Link
               href="/login"
               className="px-3 py-1.5 font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded hover:bg-slate-200"
@@ -179,6 +353,19 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+        {(walletNotice || wallet.error) && (
+          <div className="max-w-7xl mx-auto px-6 pb-3">
+            <div
+              className={`px-3.5 py-2 rounded-md border text-xs ${
+                walletNotice?.ok
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-red-50 border-red-200 text-red-900'
+              }`}
+            >
+              {walletNotice?.text || wallet.error}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Dashboard Layout: 260px Sidebar + Main Viewport */}
@@ -215,11 +402,14 @@ export default function DashboardPage() {
 
           <div className="hidden lg:block mt-4 pt-3 border-t border-slate-200 px-2 pb-1 space-y-2 text-xs text-slate-600">
             <div className="font-semibold text-slate-800">Quick Tools</div>
+            <Link href="/marketplace" className="block text-emerald-700 hover:underline">
+              Open Public Land Marketplace →
+            </Link>
             <Link href="/map" className="block text-emerald-700 hover:underline">
               Inspect Parcels on GIS Map →
             </Link>
-            <Link href="/evaluation" className="block text-emerald-700 hover:underline">
-              Run Phase 7 Benchmark Suite →
+            <Link href="/register-land" className="block text-emerald-700 hover:underline">
+              Register New Land Parcel →
             </Link>
           </div>
         </aside>
@@ -272,6 +462,14 @@ export default function DashboardPage() {
                   onSubmitted={async () => {
                     await loadWorkspaceData(user);
                     setActiveTab('workflow');
+                  }}
+                />
+              )}
+              {activeTab === 'marketplace' && (
+                <MarketplaceClient
+                  embedded
+                  onPurchased={async () => {
+                    await loadWorkspaceData(user);
                   }}
                 />
               )}

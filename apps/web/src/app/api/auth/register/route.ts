@@ -4,7 +4,7 @@ import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, fullName, phone } = await request.json();
+    const { email, password, fullName, phone, walletAddress } = await request.json();
     if (!email || !password || !fullName) {
       return NextResponse.json(
         { message: 'Full name, email, and password are required' },
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const user = registerCitizenUser({ email, password, fullName, phone });
+    const user = registerCitizenUser({ email, password, fullName, phone, walletAddress });
     const token = createSessionToken(user);
     const response = NextResponse.json({ user, accessToken: token }, { status: 201 });
     response.cookies.set(SESSION_COOKIE_NAME, token, {

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { ethers } from 'ethers';
 import {
   listParcels,
   verifyWktParcel,
@@ -39,6 +40,8 @@ export interface UserAccount {
   fullName: string;
   phone: string;
   walletAddress: string;
+  walletVerified?: boolean;
+  walletLinkedAt?: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -50,8 +53,18 @@ export interface SafeUser {
   fullName: string;
   phone: string;
   walletAddress: string;
+  walletVerified?: boolean;
+  walletLinkedAt?: string | null;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface WalletProofInput {
+  message: string;
+  signature: string;
+  signerAddress: string;
+  chainId?: number | null;
+  onChainTxHash?: string;
 }
 
 export interface DocumentAttachment {
@@ -183,15 +196,76 @@ export interface ContactSubmission {
   createdAt: string;
 }
 
+export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
+export type LandListingStatus = 'AVAILABLE' | 'SOLD';
+export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use';
+
+export interface LandListingRecord {
+  id: string;
+  parcelId: string;
+  parcelReference: string;
+  title: string;
+  address: string;
+  lga: string;
+  state: string;
+  areaSqm: number;
+  wkt: string;
+  zoning: LandZoning;
+  priceNgn: number;
+  priceEth: string;
+  sellerId: string;
+  sellerName: string;
+  sellerAddress: string;
+  tokenId: number | null;
+  listingType: LandListingType;
+  status: LandListingStatus;
+  imageUrl: string;
+  description: string;
+  createdAt: string;
+  soldAt: string | null;
+  buyerId: string | null;
+  buyerName: string | null;
+  purchaseTxHash: string | null;
+}
+
+export interface LandPurchaseRecord {
+  id: string;
+  listingId: string;
+  parcelReference: string;
+  title: string;
+  address: string;
+  lga: string;
+  buyerId: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerWallet: string;
+  priceNgn: number;
+  priceEth: string;
+  paymentMethod: 'REGISTRY_ESCROW' | 'METAMASK_ETH' | 'TRUST_WALLET_ETH';
+  txHash: string;
+  tokenId: number;
+  purchasedAt: string;
+}
+
+interface AuthNonceRecord {
+  nonce: string;
+  address: string;
+  message: string;
+  expiresAt: number;
+}
+
 interface AnaguGlobalStore {
   users: UserAccount[];
   applications: LandApplicationRecord[];
   titles: DigitalLandTitle[];
+  listings: LandListingRecord[];
+  purchases: LandPurchaseRecord[];
   mqttLogs: MqttMessageLog[];
   auditLogs: AuditLogEntry[];
   contacts: ContactSubmission[];
   extraParcels: LandParcelRecord[];
   parcelStatusOverrides: Map<string, string>;
+  authNonces: Map<string, AuthNonceRecord>;
   nextTokenId: number;
   nextBlockNumber: number;
 }
@@ -523,18 +597,265 @@ function initStore(): AnaguGlobalStore {
     },
   ];
 
+  const ikoyiWkt =
+    'POLYGON((3.4380 6.4540, 3.4394 6.4540, 3.4394 6.4530, 3.4380 6.4530, 3.4380 6.4540))';
+  const ikoyiParcel: LandParcelRecord = {
+    id: '00000000-0000-4000-8000-000000000011',
+    parcelNumber: 'LG-IKY-012',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [3.4380, 6.4540],
+          [3.4394, 6.4540],
+          [3.4394, 6.4530],
+          [3.4380, 6.4530],
+          [3.4380, 6.4540],
+        ],
+      ],
+    },
+    areaSqm: 1850.0,
+    state: 'Lagos',
+    lga: 'Eti-Osa',
+    address: '12 Bourdillon Crescent, Ikoyi',
+    status: 'active',
+    ownerId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const listings = buildSeedListings(users, [ikoyiParcel], ikoyiWkt, now);
+
   return {
     users,
     applications,
     titles: [initialTitle],
+    listings,
+    purchases: [],
     mqttLogs,
     auditLogs,
     contacts: [],
-    extraParcels: [],
+    extraParcels: [ikoyiParcel],
     parcelStatusOverrides: new Map<string, string>(),
+    authNonces: new Map<string, AuthNonceRecord>(),
     nextTokenId: 1002,
     nextBlockNumber: 14209,
   };
+}
+
+function parcelGeometryToWkt(parcel: LandParcelRecord): string {
+  const ring = parcel.geometry.coordinates[0] || [];
+  const pairs = ring.map(([lon, lat]) => `${lon.toFixed(4)} ${lat.toFixed(4)}`).join(', ');
+  return `POLYGON((${pairs}))`;
+}
+
+function buildSeedListings(
+  users: UserAccount[],
+  extraParcels: LandParcelRecord[],
+  ikoyiWkt: string,
+  createdAt: string,
+): LandListingRecord[] {
+  const allParcels = [...extraParcels, ...listParcels()];
+  const registrar = users[2] || users[0];
+  const citizen = users[0];
+
+  const byRef = (ref: string) => allParcels.find((p) => p.parcelNumber === ref);
+  const pVi2 = byRef('LG-VI-002');
+  const pLk1 = byRef('LG-LK-001');
+  const pIk1 = byRef('LG-IK-001');
+  const pYb1 = byRef('LG-YB-001');
+  const pSu1 = byRef('LG-SU-001');
+  const pIky = byRef('LG-IKY-012');
+
+  const result: LandListingRecord[] = [];
+
+  if (pVi2) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333301',
+      parcelId: pVi2.id,
+      parcelReference: pVi2.parcelNumber,
+      title: 'Victoria Island Waterfront Commercial Plot',
+      address: pVi2.address || '22 Ozumba Mbadiwe Avenue, Victoria Island',
+      lga: pVi2.lga || 'Eti-Osa',
+      state: pVi2.state,
+      areaSqm: pVi2.areaSqm || 1620.3,
+      wkt: parcelGeometryToWkt(pVi2),
+      zoning: 'Commercial',
+      priceNgn: 185_000_000,
+      priceEth: '0.0250',
+      sellerId: registrar.id,
+      sellerName: 'Lagos State Land Allocation Desk',
+      sellerAddress: registrar.walletAddress,
+      tokenId: null,
+      listingType: 'STATE_ALLOCATION',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_vi_waterfront.jpg',
+      description:
+        'Surveyed prime commercial frontage along Ozumba Mbadiwe Avenue with zero boundary overlap and instant ERC-721 title issuance upon acquisition.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  if (pLk1) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333302',
+      parcelId: pLk1.id,
+      parcelReference: pLk1.parcelNumber,
+      title: 'Lekki Phase 1 Admiralty Residential Plot',
+      address: pLk1.address || '10 Admiralty Way, Lekki Phase 1',
+      lga: pLk1.lga || 'Eti-Osa',
+      state: pLk1.state,
+      areaSqm: pLk1.areaSqm || 1710.2,
+      wkt: parcelGeometryToWkt(pLk1),
+      zoning: 'Residential',
+      priceNgn: 128_000_000,
+      priceEth: '0.0180',
+      sellerId: registrar.id,
+      sellerName: 'Lagos State Land Allocation Desk',
+      sellerAddress: registrar.walletAddress,
+      tokenId: null,
+      listingType: 'STATE_ALLOCATION',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_lekki_residential.jpg',
+      description:
+        'Corner residential estate plot in Lekki Phase 1 cleared by PostGIS boundary verification and LASRECCA institutional registry.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  if (pIk1) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333303',
+      parcelId: pIk1.id,
+      parcelReference: pIk1.parcelNumber,
+      title: 'Ikeja Central Corner Development Parcel',
+      address: pIk1.address || '5 Obafemi Awolowo Way, Ikeja',
+      lga: pIk1.lga || 'Ikeja',
+      state: pIk1.state,
+      areaSqm: pIk1.areaSqm || 1620.6,
+      wkt: parcelGeometryToWkt(pIk1),
+      zoning: 'Mixed-Use',
+      priceNgn: 96_000_000,
+      priceEth: '0.0140',
+      sellerId: registrar.id,
+      sellerName: 'Lagos State Land Allocation Desk',
+      sellerAddress: registrar.walletAddress,
+      tokenId: null,
+      listingType: 'STATE_ALLOCATION',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_ikeja_gra.jpg',
+      description:
+        'High-visibility mixed-use corridor plot near Alausa Secretariat with verified perimeter beacons and clean root of title.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  if (pIky) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333304',
+      parcelId: pIky.id,
+      parcelReference: pIky.parcelNumber,
+      title: 'Ikoyi Lagoon-Front Estate Parcel',
+      address: pIky.address || '12 Bourdillon Crescent, Ikoyi',
+      lga: pIky.lga || 'Eti-Osa',
+      state: pIky.state,
+      areaSqm: pIky.areaSqm || 1850.0,
+      wkt: ikoyiWkt,
+      zoning: 'Residential',
+      priceNgn: 240_000_000,
+      priceEth: '0.0320',
+      sellerId: registrar.id,
+      sellerName: 'Lagos State Land Allocation Desk',
+      sellerAddress: registrar.walletAddress,
+      tokenId: null,
+      listingType: 'STATE_ALLOCATION',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_ikoyi_commercial.jpg',
+      description:
+        'Low-density waterfront parcel off Bourdillon Crescent verified under WGS 84 cadastral coordinates and free of Section 28 encumbrances.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  if (pYb1) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333305',
+      parcelId: pYb1.id,
+      parcelReference: pYb1.parcelNumber,
+      title: 'Yaba Tech Corridor Mixed-Use Plot',
+      address: pYb1.address || '22 Herbert Macaulay Way, Yaba',
+      lga: pYb1.lga || 'Mainland',
+      state: pYb1.state,
+      areaSqm: pYb1.areaSqm || 1610.5,
+      wkt: parcelGeometryToWkt(pYb1),
+      zoning: 'Mixed-Use',
+      priceNgn: 64_000_000,
+      priceEth: '0.0095',
+      sellerId: registrar.id,
+      sellerName: 'Lagos State Land Allocation Desk',
+      sellerAddress: registrar.walletAddress,
+      tokenId: null,
+      listingType: 'STATE_ALLOCATION',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_lekki_residential.jpg',
+      description:
+        'Mainland commercial and residential development site adjacent to Herbert Macaulay Way with completed surveyor confirmation.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  if (pSu1) {
+    result.push({
+      id: '33333333-3333-4333-8333-333333333306',
+      parcelId: pSu1.id,
+      parcelReference: pSu1.parcelNumber,
+      title: 'Surulere Commercial Avenue Plot',
+      address: pSu1.address || '8 Bode Thomas Street, Surulere',
+      lga: pSu1.lga || 'Surulere',
+      state: pSu1.state,
+      areaSqm: pSu1.areaSqm || 1600.9,
+      wkt: parcelGeometryToWkt(pSu1),
+      zoning: 'Commercial',
+      priceNgn: 58_000_000,
+      priceEth: '0.0085',
+      sellerId: citizen.id,
+      sellerName: citizen.fullName,
+      sellerAddress: citizen.walletAddress,
+      tokenId: null,
+      listingType: 'VERIFIED_RESALE',
+      status: 'AVAILABLE',
+      imageUrl: '/images/parcel_ikeja_gra.jpg',
+      description:
+        'Cleared commercial plot on Bode Thomas Street with verified community attestation and zero competing registry claims.',
+      createdAt,
+      soldAt: null,
+      buyerId: null,
+      buyerName: null,
+      purchaseTxHash: null,
+    });
+  }
+
+  return result;
 }
 
 const g = globalThis as typeof globalThis & { __anaguStore?: AnaguGlobalStore };
@@ -588,12 +909,19 @@ export function registerCitizenUser(input: {
   password: string;
   fullName: string;
   phone?: string;
+  walletAddress?: string;
 }): SafeUser {
   const store = getAnaguStore();
   const exists = store.users.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase());
   if (exists) {
     throw new Error('Email is already registered');
   }
+  const suppliedWallet = input.walletAddress?.trim();
+  const normalizedWallet =
+    suppliedWallet && ethers.isAddress(suppliedWallet)
+      ? ethers.getAddress(suppliedWallet)
+      : '0x' + crypto.randomBytes(20).toString('hex');
+
   const newUser: UserAccount = {
     id: crypto.randomUUID(),
     email: input.email.trim().toLowerCase(),
@@ -601,7 +929,9 @@ export function registerCitizenUser(input: {
     role: 'CITIZEN',
     fullName: input.fullName.trim(),
     phone: input.phone?.trim() || '',
-    walletAddress: '0x' + crypto.randomBytes(20).toString('hex'),
+    walletAddress: normalizedWallet,
+    walletVerified: Boolean(suppliedWallet && ethers.isAddress(suppliedWallet)),
+    walletLinkedAt: suppliedWallet && ethers.isAddress(suppliedWallet) ? new Date().toISOString() : null,
     isActive: true,
     createdAt: new Date().toISOString(),
   };
@@ -614,9 +944,251 @@ export function registerCitizenUser(input: {
     'USER',
     newUser.id,
     'SUCCESS',
-    `New citizen account created for ${newUser.email}`,
+    `New citizen account created for ${newUser.email} (Wallet: ${newUser.walletAddress})`,
   );
   return toSafeUser(newUser);
+}
+
+export function issueMetaMaskChallenge(rawAddress: string): {
+  address: string;
+  nonce: string;
+  message: string;
+  expiresAt: string;
+} {
+  if (!rawAddress || !ethers.isAddress(rawAddress)) {
+    throw new Error('Valid EVM wallet address is required');
+  }
+  const store = getAnaguStore();
+  if (!store.authNonces) {
+    store.authNonces = new Map<string, AuthNonceRecord>();
+  }
+  const address = ethers.getAddress(rawAddress);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const issuedAt = new Date().toISOString();
+  const expiresAtMs = Date.now() + 5 * 60 * 1000;
+  const message = [
+    'ANAGU Land Registry Authentication & Wallet Verification',
+    '',
+    `Address: ${address}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt}`,
+    'Network: Hyperledger Besu QBFT (Chain ID 1337)',
+  ].join('\n');
+
+  store.authNonces.set(address.toLowerCase(), {
+    nonce,
+    address,
+    message,
+    expiresAt: expiresAtMs,
+  });
+
+  return {
+    address,
+    nonce,
+    message,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+  };
+}
+
+export function verifyMetaMaskChallenge(input: {
+  address: string;
+  signature: string;
+  mode: 'login' | 'link';
+  currentUser?: SafeUser | null;
+}): { user: SafeUser; linked: boolean; isNewAccount?: boolean } {
+  if (!input.address || !ethers.isAddress(input.address)) {
+    throw new Error('Valid EVM wallet address is required');
+  }
+  if (!input.signature) {
+    throw new Error('MetaMask cryptographic signature is required');
+  }
+  const store = getAnaguStore();
+  if (!store.authNonces) {
+    store.authNonces = new Map<string, AuthNonceRecord>();
+  }
+
+  const normalizedAddress = ethers.getAddress(input.address);
+  const record = store.authNonces.get(normalizedAddress.toLowerCase());
+  if (!record || record.expiresAt < Date.now()) {
+    throw new Error('MetaMask verification challenge expired or not found. Please retry.');
+  }
+
+  let recovered: string;
+  try {
+    recovered = ethers.getAddress(ethers.verifyMessage(record.message, input.signature));
+  } catch {
+    throw new Error('Invalid MetaMask signature');
+  }
+
+  if (recovered !== normalizedAddress) {
+    throw new Error('Signature does not match the connected MetaMask wallet address');
+  }
+
+  store.authNonces.delete(normalizedAddress.toLowerCase());
+  const now = new Date().toISOString();
+
+  if (input.mode === 'link') {
+    if (!input.currentUser) {
+      throw new Error('Authentication required to link a MetaMask wallet');
+    }
+    const targetUser = store.users.find((u) => u.id === input.currentUser?.id);
+    if (!targetUser || !targetUser.isActive) {
+      throw new Error('Active user account not found');
+    }
+    const conflict = store.users.find(
+      (u) =>
+        u.id !== targetUser.id &&
+        u.walletVerified &&
+        u.walletAddress.toLowerCase() === normalizedAddress.toLowerCase(),
+    );
+    if (conflict) {
+      throw new Error(`Wallet ${normalizedAddress} is already verified on ${conflict.email}`);
+    }
+
+    const previousWallet = targetUser.walletAddress;
+    targetUser.walletAddress = normalizedAddress;
+    targetUser.walletVerified = true;
+    targetUser.walletLinkedAt = now;
+
+    recordAudit(
+      targetUser.id,
+      targetUser.fullName,
+      targetUser.role,
+      'METAMASK_WALLET_LINKED',
+      'USER',
+      targetUser.id,
+      'SUCCESS',
+      `Verified MetaMask ownership for ${normalizedAddress} (previous: ${previousWallet})`,
+    );
+
+    return { user: toSafeUser(targetUser), linked: true };
+  }
+
+  let matchedUser = store.users.find(
+    (u) => u.walletAddress.toLowerCase() === normalizedAddress.toLowerCase(),
+  );
+  let isNewAccount = false;
+
+  if (!matchedUser) {
+    isNewAccount = true;
+    matchedUser = {
+      id: crypto.randomUUID(),
+      email: `${normalizedAddress.slice(0, 10).toLowerCase()}@wallet.anagu.gov.ng`,
+      passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')),
+      role: 'CITIZEN',
+      fullName: `Citizen (${normalizedAddress.slice(0, 6)}...${normalizedAddress.slice(-4)})`,
+      phone: '',
+      walletAddress: normalizedAddress,
+      walletVerified: true,
+      walletLinkedAt: now,
+      isActive: true,
+      createdAt: now,
+    };
+    store.users.push(matchedUser);
+    recordAudit(
+      matchedUser.id,
+      matchedUser.fullName,
+      matchedUser.role,
+      'USER_REGISTERED_METAMASK',
+      'USER',
+      matchedUser.id,
+      'SUCCESS',
+      `Created Citizen account authenticated via MetaMask wallet ${normalizedAddress}`,
+    );
+  } else {
+    if (!matchedUser.isActive) {
+      throw new Error('This account is suspended. Contact Land Administrator.');
+    }
+    matchedUser.walletVerified = true;
+    matchedUser.walletLinkedAt = matchedUser.walletLinkedAt || now;
+    recordAudit(
+      matchedUser.id,
+      matchedUser.fullName,
+      matchedUser.role,
+      'USER_METAMASK_LOGIN',
+      'USER',
+      matchedUser.id,
+      'SUCCESS',
+      `Authenticated via MetaMask signature (${normalizedAddress})`,
+    );
+  }
+
+  return { user: toSafeUser(matchedUser), linked: true, isNewAccount };
+}
+
+function verifyWalletProof(proof?: WalletProofInput | null): {
+  signerAddress: string;
+  onChainTxHash?: string;
+} | null {
+  if (!proof) return null;
+  if (!proof.message || !proof.signature || !proof.signerAddress) {
+    throw new Error('Incomplete Web3 wallet cryptographic proof');
+  }
+  const expected = ethers.getAddress(proof.signerAddress);
+  const recovered = ethers.getAddress(ethers.verifyMessage(proof.message, proof.signature));
+  if (recovered !== expected) {
+    throw new Error('FORBIDDEN: Wallet signature verification failed');
+  }
+  return {
+    signerAddress: expected,
+    onChainTxHash: proof.onChainTxHash,
+  };
+}
+
+export function resolveOrCreateWalletOwner(input: {
+  walletAddress?: string;
+  fullName?: string;
+  walletProof?: WalletProofInput | null;
+}): SafeUser {
+  const store = getAnaguStore();
+  const verifiedProof = verifyWalletProof(input.walletProof);
+  const rawWallet = verifiedProof?.signerAddress || input.walletAddress?.trim();
+
+  const normalizedWallet =
+    rawWallet && ethers.isAddress(rawWallet)
+      ? ethers.getAddress(rawWallet)
+      : ethers.getAddress(
+          `0x${crypto
+            .createHash('sha256')
+            .update(input.fullName?.trim() || crypto.randomUUID())
+            .digest('hex')
+            .slice(0, 40)}`,
+        );
+
+  const existing = store.users.find(
+    (u) => u.walletAddress.toLowerCase() === normalizedWallet.toLowerCase(),
+  );
+  if (existing) {
+    if (verifiedProof) {
+      existing.walletVerified = true;
+      existing.walletLinkedAt = existing.walletLinkedAt || new Date().toISOString();
+    }
+    if (input.fullName?.trim() && existing.fullName.startsWith('Citizen (')) {
+      existing.fullName = input.fullName.trim();
+    }
+    return toSafeUser(existing);
+  }
+
+  const now = new Date().toISOString();
+  const displayName =
+    input.fullName?.trim() ||
+    `Land Owner (${normalizedWallet.slice(0, 6)}...${normalizedWallet.slice(-4)})`;
+
+  const walletOwner: UserAccount = {
+    id: crypto.randomUUID(),
+    email: `${normalizedWallet.slice(0, 10).toLowerCase()}@wallet.anagu.gov.ng`,
+    passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')),
+    role: 'CITIZEN',
+    fullName: displayName,
+    phone: '',
+    walletAddress: normalizedWallet,
+    walletVerified: Boolean(verifiedProof),
+    walletLinkedAt: verifiedProof ? now : null,
+    isActive: true,
+    createdAt: now,
+  };
+  store.users.push(walletOwner);
+  return toSafeUser(walletOwner);
 }
 
 export function getAllEffectiveParcels(filters?: {
@@ -864,6 +1436,7 @@ export function performApplicationWorkflowAction(
     boundaryConfirmed?: boolean;
     legalNotes?: string;
     registrarNotes?: string;
+    walletProof?: WalletProofInput | null;
   },
 ): LandApplicationRecord {
   const store = getAnaguStore();
@@ -1035,10 +1608,12 @@ export function performApplicationWorkflowAction(
         store.parcelStatusOverrides.set(existingParcel.id, 'active');
       }
 
+      const verifiedProof = verifyWalletProof(payload?.walletProof);
       const applicant = store.users.find((u) => u.id === app.applicantId);
       const tokenId = store.nextTokenId++;
       const blockNumber = store.nextBlockNumber++;
-      const txHash = makeTxHash(`mint:${app.parcelReference}:${tokenId}`);
+      const txHash =
+        verifiedProof?.onChainTxHash || makeTxHash(`mint:${app.parcelReference}:${tokenId}`);
       const docConcatHash = sha256(app.documents.map((d) => d.sha256Hash).join(':'));
 
       const title: DigitalLandTitle = {
@@ -1091,6 +1666,7 @@ export function performApplicationWorkflowAction(
         parcelReference: app.parcelReference,
         txHash,
         blockNumber,
+        ...(verifiedProof ? { signerAddress: verifiedProof.signerAddress } : {}),
       }, 'CITIZEN');
 
       recordAudit(
@@ -1101,7 +1677,9 @@ export function performApplicationWorkflowAction(
         'TITLE',
         `TOKEN-${tokenId}`,
         'SUCCESS',
-        `Approved ${app.parcelReference} and minted ERC-721 Title #${tokenId} (tx ${txHash.slice(0, 14)}...)`,
+        `Approved ${app.parcelReference} and minted ERC-721 Title #${tokenId} (tx ${txHash.slice(0, 14)}...)${
+          verifiedProof ? ` [MetaMask verified: ${verifiedProof.signerAddress}]` : ''
+        }`,
       );
       return app;
     }
@@ -1143,6 +1721,7 @@ export function transferTitleOwnership(
   tokenId: number,
   newOwnerEmailOrId: string,
   bypassAttempt?: boolean,
+  walletProof?: WalletProofInput | null,
 ): DigitalLandTitle {
   const store = getAnaguStore();
   const title = store.titles.find((t) => t.tokenId === tokenId);
@@ -1180,17 +1759,19 @@ export function transferTitleOwnership(
     throw new Error('CONFLICT: Cannot transfer a title that has been statutorily revoked.');
   }
 
+  const verifiedProof = verifyWalletProof(walletProof);
   const recipient = store.users.find(
     (u) =>
       u.id === newOwnerEmailOrId ||
-      u.email.toLowerCase() === newOwnerEmailOrId.trim().toLowerCase(),
+      u.email.toLowerCase() === newOwnerEmailOrId.trim().toLowerCase() ||
+      u.walletAddress.toLowerCase() === newOwnerEmailOrId.trim().toLowerCase(),
   );
   if (!recipient) {
     throw new Error('Recipient user account not found');
   }
 
   const now = new Date().toISOString();
-  const txHash = makeTxHash(`transfer:${tokenId}:${recipient.id}`);
+  const txHash = verifiedProof?.onChainTxHash || makeTxHash(`transfer:${tokenId}:${recipient.id}`);
   const fromAddr = title.ownerAddress;
 
   title.ownerId = recipient.id;
@@ -1214,6 +1795,7 @@ export function transferTitleOwnership(
     parcelReference: title.parcelReference,
     newOwnerName: recipient.fullName,
     txHash,
+    ...(verifiedProof ? { signerAddress: verifiedProof.signerAddress } : {}),
   }, 'CITIZEN');
 
   recordAudit(
@@ -1224,7 +1806,9 @@ export function transferTitleOwnership(
     'TITLE',
     `TOKEN-${tokenId}`,
     'SUCCESS',
-    `Registry-controlled transfer of Title #${tokenId} (${title.parcelReference}) to ${recipient.fullName} (tx ${txHash.slice(0, 14)}...)`,
+    `Registry-controlled transfer of Title #${tokenId} (${title.parcelReference}) to ${recipient.fullName} (tx ${txHash.slice(0, 14)}...)${
+      verifiedProof ? ` [MetaMask verified: ${verifiedProof.signerAddress}]` : ''
+    }`,
   );
 
   return title;
@@ -1237,6 +1821,7 @@ export function revokeLandTitle(
     grounds: RevocationGround;
     administrativeReference: string;
     justification: string;
+    walletProof?: WalletProofInput | null;
   },
 ): DigitalLandTitle {
   const store = getAnaguStore();
@@ -1278,8 +1863,10 @@ export function revokeLandTitle(
     throw new Error('Administrative gazette reference and legal justification are required.');
   }
 
+  const verifiedProof = verifyWalletProof(input.walletProof);
   const now = new Date().toISOString();
-  const txHash = makeTxHash(`revoke:${input.tokenId}:${input.grounds}`);
+  const txHash =
+    verifiedProof?.onChainTxHash || makeTxHash(`revoke:${input.tokenId}:${input.grounds}`);
 
   title.isRevoked = true;
   title.revokedAt = now;
@@ -1311,6 +1898,7 @@ export function revokeLandTitle(
     administrativeReference: title.revocationReference,
     txHash,
     revokedAt: now,
+    ...(verifiedProof ? { signerAddress: verifiedProof.signerAddress } : {}),
   }, 'ALL');
 
   recordAudit(
@@ -1321,8 +1909,371 @@ export function revokeLandTitle(
     'TITLE',
     `TOKEN-${title.tokenId}`,
     'SUCCESS',
-    `Governor revoked Title #${title.tokenId} (${title.parcelReference}) under Land Use Act 1978 Sec. 28 — Ground: ${input.grounds} (Ref: ${title.revocationReference})`,
+    `Governor revoked Title #${title.tokenId} (${title.parcelReference}) under Land Use Act 1978 Sec. 28 — Ground: ${input.grounds} (Ref: ${title.revocationReference})${
+      verifiedProof ? ` [MetaMask verified: ${verifiedProof.signerAddress}]` : ''
+    }`,
   );
 
   return title;
 }
+
+export function listLandListings(filters?: {
+  lga?: string | null;
+  status?: string | null;
+  listingType?: string | null;
+  q?: string | null;
+}): LandListingRecord[] {
+  const store = getAnaguStore();
+  if (!store.listings) {
+    store.listings = buildSeedListings(
+      store.users,
+      store.extraParcels,
+      'POLYGON((3.4380 6.4540, 3.4394 6.4540, 3.4394 6.4530, 3.4380 6.4530, 3.4380 6.4540))',
+      new Date().toISOString(),
+    );
+  }
+  if (!store.purchases) {
+    store.purchases = [];
+  }
+  return store.listings.filter((item) => {
+    if (filters?.lga && item.lga.toLowerCase() !== filters.lga.toLowerCase()) return false;
+    if (filters?.status && item.status !== filters.status) return false;
+    if (filters?.listingType && item.listingType !== filters.listingType) return false;
+    if (filters?.q) {
+      const needle = filters.q.trim().toLowerCase();
+      const haystack = `${item.title} ${item.parcelReference} ${item.address} ${item.lga} ${item.zoning}`.toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    return true;
+  });
+}
+
+export function listUserPurchases(user: SafeUser): LandPurchaseRecord[] {
+  const store = getAnaguStore();
+  if (!store.purchases) store.purchases = [];
+  if (user.role === 'LAND_ADMINISTRATOR' || user.role === 'REGISTRAR') {
+    return store.purchases;
+  }
+  return store.purchases.filter((p) => p.buyerId === user.id);
+}
+
+export function createLandListing(
+  user: SafeUser,
+  input: {
+    tokenId: number;
+    title: string;
+    priceNgn: number;
+    priceEth?: string;
+    zoning?: LandZoning;
+    description?: string;
+  },
+): LandListingRecord {
+  const store = getAnaguStore();
+  if (!store.listings) listLandListings();
+
+  const titleRecord = store.titles.find((t) => t.tokenId === Number(input.tokenId));
+  if (!titleRecord) {
+    throw new Error(`Digital Land Title #${input.tokenId} not found`);
+  }
+  if (titleRecord.isRevoked) {
+    throw new Error(`FORBIDDEN: Cannot list Title #${input.tokenId} because it is revoked under Section 28`);
+  }
+  if (
+    titleRecord.ownerId !== user.id &&
+    user.role !== 'REGISTRAR' &&
+    user.role !== 'LAND_ADMINISTRATOR'
+  ) {
+    throw new Error('FORBIDDEN: Only the verified title owner or Registrar can list this parcel for sale');
+  }
+
+  const alreadyListed = store.listings.find(
+    (l) => l.tokenId === titleRecord.tokenId && l.status === 'AVAILABLE',
+  );
+  if (alreadyListed) {
+    throw new Error(`Title #${titleRecord.tokenId} is already listed on the marketplace`);
+  }
+
+  if (!Number.isFinite(input.priceNgn) || input.priceNgn <= 0) {
+    throw new Error('A valid listing price in NGN is required');
+  }
+
+  const matchingApp = store.applications.find((a) => a.id === titleRecord.applicationId);
+  const matchingParcel = getAllEffectiveParcels().find(
+    (p) => p.id === titleRecord.parcelId || p.parcelNumber === titleRecord.parcelReference,
+  );
+  const wkt =
+    matchingApp?.wkt ||
+    (matchingParcel ? parcelGeometryToWkt(matchingParcel) : 'POLYGON((3.4201 6.4290, 3.4215 6.4290, 3.4215 6.4280, 3.4201 6.4280, 3.4201 6.4290))');
+
+  const listing: LandListingRecord = {
+    id: crypto.randomUUID(),
+    parcelId: titleRecord.parcelId,
+    parcelReference: titleRecord.parcelReference,
+    title: input.title.trim() || `${titleRecord.parcelReference} Verified Parcel`,
+    address: titleRecord.address,
+    lga: titleRecord.lga,
+    state: titleRecord.state,
+    areaSqm: titleRecord.areaSqm,
+    wkt,
+    zoning: input.zoning || 'Residential',
+    priceNgn: Math.round(input.priceNgn),
+    priceEth:
+      input.priceEth?.trim() ||
+      Math.max(0.005, Math.round((input.priceNgn / 7_000_000_000) * 10000) / 10000).toFixed(4),
+    sellerId: titleRecord.ownerId,
+    sellerName: titleRecord.ownerName,
+    sellerAddress: titleRecord.ownerAddress,
+    tokenId: titleRecord.tokenId,
+    listingType: 'VERIFIED_RESALE',
+    status: 'AVAILABLE',
+    imageUrl: '/images/parcel_vi_waterfront.jpg',
+    description:
+      input.description?.trim() ||
+      `Verified ERC-721 Title #${titleRecord.tokenId} offered for registry-controlled acquisition and deed transfer.`,
+    createdAt: new Date().toISOString(),
+    soldAt: null,
+    buyerId: null,
+    buyerName: null,
+    purchaseTxHash: null,
+  };
+
+  store.listings.unshift(listing);
+  recordAudit(
+    user.id,
+    user.fullName,
+    user.role,
+    'MARKETPLACE_LISTING_CREATED',
+    'TITLE',
+    `TOKEN-${titleRecord.tokenId}`,
+    'SUCCESS',
+    `Listed ${titleRecord.parcelReference} (Title #${titleRecord.tokenId}) on ANAGU Marketplace for NGN ${listing.priceNgn.toLocaleString()}.`,
+  );
+  return listing;
+}
+
+export function purchaseLandListing(
+  user: SafeUser,
+  listingId: string,
+  input: {
+    paymentMethod: 'REGISTRY_ESCROW' | 'METAMASK_ETH' | 'TRUST_WALLET_ETH';
+    walletProof?: WalletProofInput | null;
+  },
+): {
+  listing: LandListingRecord;
+  purchase: LandPurchaseRecord;
+  title: DigitalLandTitle;
+} {
+  const store = getAnaguStore();
+  if (!store.listings) listLandListings();
+  if (!store.purchases) store.purchases = [];
+
+  const listing = store.listings.find((l) => l.id === listingId);
+  if (!listing) {
+    throw new Error('Land listing not found');
+  }
+  if (listing.status !== 'AVAILABLE') {
+    throw new Error('This land parcel has already been acquired and transferred.');
+  }
+  if (listing.sellerId === user.id) {
+    throw new Error('You already own or control this listed parcel.');
+  }
+
+  const verifiedProof = verifyWalletProof(input.walletProof);
+  const buyerWallet =
+    verifiedProof?.signerAddress ||
+    user.walletAddress ||
+    '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+  const now = new Date().toISOString();
+  const txHash =
+    verifiedProof?.onChainTxHash || makeTxHash(`purchase:${listing.parcelReference}:${user.id}`);
+
+  let titleRecord: DigitalLandTitle | undefined;
+
+  if (listing.tokenId !== null) {
+    titleRecord = store.titles.find((t) => t.tokenId === listing.tokenId);
+    if (!titleRecord) {
+      throw new Error(`Linked ERC-721 Title #${listing.tokenId} was not found`);
+    }
+    if (titleRecord.isRevoked) {
+      throw new Error('FORBIDDEN: This title has been statutorily revoked under Section 28 and cannot be purchased.');
+    }
+
+    const fromAddr = titleRecord.ownerAddress;
+    titleRecord.ownerId = user.id;
+    titleRecord.ownerName = user.fullName;
+    titleRecord.ownerAddress = buyerWallet;
+    titleRecord.ownerReferenceHash = sha256(user.id);
+    titleRecord.txHash = txHash;
+    titleRecord.blockNumber = store.nextBlockNumber++;
+    titleRecord.ownershipHistory.push({
+      fromAddress: fromAddr,
+      toAddress: buyerWallet,
+      toName: user.fullName,
+      txHash,
+      timestamp: now,
+      action: 'TRANSFERRED',
+    });
+  } else {
+    const appId = crypto.randomUUID();
+    const tokenId = store.nextTokenId++;
+    const blockNumber = store.nextBlockNumber++;
+    const spatial = verifyWktParcel(listing.wkt, appId, listing.parcelId);
+    const deedHash = sha256(`acquisition:${listing.parcelReference}:${user.id}:${now}`);
+
+    const applicationRecord: LandApplicationRecord = {
+      id: appId,
+      applicantId: user.id,
+      applicantName: user.fullName,
+      applicantEmail: user.email,
+      parcelId: listing.parcelId,
+      parcelReference: listing.parcelReference,
+      state: listing.state,
+      lga: listing.lga,
+      address: listing.address,
+      wkt: listing.wkt,
+      claimantName: user.fullName,
+      nationalIdHash: sha256(user.id),
+      documents: [
+        {
+          id: crypto.randomUUID(),
+          fileName: `Allocation_Deed_${listing.parcelReference}.pdf`,
+          fileType: 'application/pdf',
+          fileSizeBytes: 342100,
+          sha256Hash: deedHash,
+          objectKey: `anagu-documents/${listing.parcelReference}/Allocation_Deed_${listing.parcelReference}.pdf`,
+          uploadedAt: now,
+        },
+      ],
+      status: 'REGISTERED',
+      spatialVerification: spatial,
+      surveyReport: {
+        id: crypto.randomUUID(),
+        surveyorId: store.users[1]?.id || 'SYSTEM_SURVEYOR',
+        surveyorName: store.users[1]?.fullName || 'Lagos State Surveyor-General',
+        findings: 'Pre-surveyed state parcel boundaries verified under EPSG:4326.',
+        boundaryConfirmed: true,
+        submittedAt: now,
+      },
+      oracleVerification: {
+        id: crypto.randomUUID(),
+        applicationId: appId,
+        institutionalVerified: true,
+        communityVerified: true,
+        institutionalDetails: { registry: 'LASRECCA', source: listing.listingType },
+        communityDetails: { allocationCleared: true },
+        overallOutcome: 'VERIFIED',
+        notes: 'Cleared via ANAGU verified land acquisition settlement.',
+        verifiedAt: now,
+      },
+      legalVerified: true,
+      legalOfficerName: store.users[2]?.fullName || 'ANAGU Registry Desk',
+      legalNotes: 'Statutory allocation settled and deed issued.',
+      registrarNotes: `Acquired via ${input.paymentMethod} and minted to ${user.fullName}.`,
+      tokenId,
+      txHash,
+      idempotencyKey: null,
+      submittedAt: now,
+      updatedAt: now,
+    };
+    store.applications.unshift(applicationRecord);
+
+    titleRecord = {
+      tokenId,
+      applicationId: appId,
+      parcelId: listing.parcelId,
+      parcelReference: listing.parcelReference,
+      address: listing.address,
+      lga: listing.lga,
+      state: listing.state,
+      areaSqm: listing.areaSqm,
+      ownerId: user.id,
+      ownerName: user.fullName,
+      ownerAddress: buyerWallet,
+      ownerReferenceHash: sha256(user.id),
+      spatialHash: sha256(listing.wkt),
+      documentHash: deedHash,
+      txHash,
+      blockNumber,
+      issuedAt: now,
+      isRevoked: false,
+      revokedAt: null,
+      revocationGrounds: null,
+      revocationReference: null,
+      revocationJustification: null,
+      revokedByName: null,
+      ownershipHistory: [
+        {
+          fromAddress: '0x0000000000000000000000000000000000000000',
+          toAddress: buyerWallet,
+          toName: user.fullName,
+          txHash,
+          timestamp: now,
+          action: 'ISSUED',
+        },
+      ],
+    };
+    store.titles.unshift(titleRecord);
+    store.parcelStatusOverrides.set(listing.parcelId, 'active');
+  }
+
+  listing.status = 'SOLD';
+  listing.tokenId = titleRecord.tokenId;
+  listing.soldAt = now;
+  listing.buyerId = user.id;
+  listing.buyerName = user.fullName;
+  listing.purchaseTxHash = txHash;
+
+  const purchase: LandPurchaseRecord = {
+    id: crypto.randomUUID(),
+    listingId: listing.id,
+    parcelReference: listing.parcelReference,
+    title: listing.title,
+    address: listing.address,
+    lga: listing.lga,
+    buyerId: user.id,
+    buyerName: user.fullName,
+    buyerEmail: user.email,
+    buyerWallet,
+    priceNgn: listing.priceNgn,
+    priceEth: listing.priceEth,
+    paymentMethod: input.paymentMethod,
+    txHash,
+    tokenId: titleRecord.tokenId,
+    purchasedAt: now,
+  };
+  store.purchases.unshift(purchase);
+
+  publishMqttLog(
+    listing.listingType === 'STATE_ALLOCATION'
+      ? 'anagu/title/minted'
+      : 'anagu/application/status-changed',
+    {
+      event: 'LAND_PURCHASED',
+      listingId: listing.id,
+      tokenId: titleRecord.tokenId,
+      parcelReference: listing.parcelReference,
+      buyerName: user.fullName,
+      paymentMethod: input.paymentMethod,
+      txHash,
+    },
+    'CITIZEN',
+  );
+
+  recordAudit(
+    user.id,
+    user.fullName,
+    user.role,
+    'LAND_PURCHASED',
+    'TITLE',
+    `TOKEN-${titleRecord.tokenId}`,
+    'SUCCESS',
+    `Acquired parcel ${listing.parcelReference} (${listing.title}) via ${input.paymentMethod} for NGN ${listing.priceNgn.toLocaleString()} (Title #${titleRecord.tokenId})${
+      verifiedProof
+        ? ` [${input.paymentMethod === 'TRUST_WALLET_ETH' ? 'Trust Wallet' : 'MetaMask'} verified: ${verifiedProof.signerAddress}]`
+        : ''
+    }`,
+  );
+
+  return { listing, purchase, title: titleRecord };
+}
+

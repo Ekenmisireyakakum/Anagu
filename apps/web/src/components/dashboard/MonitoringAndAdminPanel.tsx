@@ -186,7 +186,12 @@ export default function MonitoringAndAdminPanel({
                     <div className="font-mono text-[11px] text-slate-500">{u.email}</div>
                   </td>
                   <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
-                    {u.walletAddress}
+                    <div>{u.walletAddress}</div>
+                    {u.walletVerified && (
+                      <span className="inline-block mt-0.5 text-[10px] text-emerald-700 font-semibold">
+                        MetaMask Verified
+                      </span>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <select

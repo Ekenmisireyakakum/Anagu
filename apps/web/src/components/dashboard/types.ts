@@ -29,8 +29,18 @@ export interface SafeUser {
   fullName: string;
   phone: string;
   walletAddress: string;
+  walletVerified?: boolean;
+  walletLinkedAt?: string | null;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface WalletProof {
+  message: string;
+  signature: string;
+  signerAddress: string;
+  chainId?: number | null;
+  onChainTxHash?: string;
 }
 
 export interface DocumentAttachment {
@@ -184,3 +194,55 @@ export interface OfflineQueuedApplication {
     idempotencyKey: string;
   };
 }
+
+export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
+export type LandListingStatus = 'AVAILABLE' | 'SOLD';
+export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use';
+
+export interface LandListingRecord {
+  id: string;
+  parcelId: string;
+  parcelReference: string;
+  title: string;
+  address: string;
+  lga: string;
+  state: string;
+  areaSqm: number;
+  wkt: string;
+  zoning: LandZoning;
+  priceNgn: number;
+  priceEth: string;
+  sellerId: string;
+  sellerName: string;
+  sellerAddress: string;
+  tokenId: number | null;
+  listingType: LandListingType;
+  status: LandListingStatus;
+  imageUrl: string;
+  description: string;
+  createdAt: string;
+  soldAt: string | null;
+  buyerId: string | null;
+  buyerName: string | null;
+  purchaseTxHash: string | null;
+}
+
+export interface LandPurchaseRecord {
+  id: string;
+  listingId: string;
+  parcelReference: string;
+  title: string;
+  address: string;
+  lga: string;
+  buyerId: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerWallet: string;
+  priceNgn: number;
+  priceEth: string;
+  paymentMethod: 'REGISTRY_ESCROW' | 'METAMASK_ETH' | 'TRUST_WALLET_ETH';
+  txHash: string;
+  tokenId: number;
+  purchasedAt: string;
+}
+

@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       grounds: body.grounds,
       administrativeReference: String(body.administrativeReference || ''),
       justification: String(body.justification || ''),
+      walletProof: body.walletProof || null,
     });
     return NextResponse.json(title);
   } catch (err) {

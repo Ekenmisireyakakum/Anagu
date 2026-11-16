@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useFirebase } from '../FirebaseContext';
+import { useWallet } from '../WalletContext';
+import OsmParcelMap from '../map/OsmParcelMap';
 import type { OfflineQueuedApplication, SafeUser } from './types';
 
 interface SubmitApplicationPanelProps {
-  user: SafeUser;
+  user?: SafeUser | null;
   onSubmitted: () => Promise<void>;
 }
 
@@ -59,14 +62,16 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 }
 
 export default function SubmitApplicationPanel({
-  user,
+  user = null,
   onSubmitted,
 }: SubmitApplicationPanelProps) {
+  const firebase = useFirebase();
+  const wallet = useWallet();
   const [parcelReference, setParcelReference] = useState('LG-LK-209');
   const [stateName, setStateName] = useState('Lagos');
   const [lga, setLga] = useState('Eti-Osa');
   const [address, setAddress] = useState('Plot 19, Admiralty Road, Lekki Phase 1');
-  const [claimantName, setClaimantName] = useState(user.fullName);
+  const [claimantName, setClaimantName] = useState(user?.fullName || 'Lagos Landowner');
   const [nationalId, setNationalId] = useState('NIN-29384710293');
   const [wkt, setWkt] = useState(PRESETS[0].wkt);
   const [documents, setDocuments] = useState<AttachedFileMeta[]>([]);
@@ -77,11 +82,23 @@ export default function SubmitApplicationPanel({
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
+    if (user?.fullName) {
+      setClaimantName(user.fullName);
+    }
+  }, [user?.fullName]);
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(OFFLINE_STORAGE_KEY);
       if (saved) setOfflineQueue(JSON.parse(saved));
     } catch {
       // Ignore storage read issues
+    }
+    if (typeof window !== 'undefined') {
+      const wktParam = new URLSearchParams(window.location.search).get('wkt');
+      if (wktParam && wktParam.trim().toUpperCase().startsWith('POLYGON')) {
+        setWkt(wktParam.trim());
+      }
     }
   }, []);
 
@@ -177,6 +194,7 @@ export default function SubmitApplicationPanel({
       wkt,
       claimantName,
       nationalId,
+      walletAddress: wallet.address || undefined,
       documents,
       idempotencyKey,
     };
@@ -207,6 +225,9 @@ export default function SubmitApplicationPanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Submission failed');
+      if (firebase.firebaseUser && data.application) {
+        await firebase.syncApplication(data.application).catch(() => {});
+      }
       const spatialPassed = data.application?.spatialVerification?.passed;
       setFeedback({
         type: 'ok',
@@ -245,6 +266,9 @@ export default function SubmitApplicationPanel({
         if (!res.ok) {
           remaining.push(item);
         } else {
+          if (firebase.firebaseUser && data.application && !data.deduplicated) {
+            await firebase.syncApplication(data.application).catch(() => {});
+          }
           if (data.deduplicated) dedupCount++;
           else syncedCount++;
           if (keepCopyToTestDedup) remaining.push(item);
@@ -284,6 +308,27 @@ export default function SubmitApplicationPanel({
             />
             Simulate Offline Mode
           </label>
+        </div>
+
+        {/* Owner Wallet Pairing */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
+          <div className="text-xs text-slate-700">
+            <span className="font-semibold text-slate-900">Title Recipient Wallet: </span>
+            {wallet.isConnected && wallet.address ? (
+              <span className="font-mono text-emerald-700">
+                {wallet.walletLabel} ({wallet.address.slice(0, 6)}...{wallet.address.slice(-4)})
+              </span>
+            ) : (
+              <span className="text-slate-500">Optional — connect MetaMask or Trust Wallet</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => wallet.openModal()}
+            className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100 transition-colors whitespace-nowrap"
+          >
+            {wallet.isConnected ? 'Change Wallet' : 'Connect MetaMask / Trust Wallet'}
+          </button>
         </div>
 
         {/* Scenario Presets */}
@@ -392,17 +437,40 @@ export default function SubmitApplicationPanel({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Parcel Boundary WKT (WGS 84 EPSG:4326)
-            </label>
-            <textarea
-              rows={2}
-              required
-              value={wkt}
-              onChange={(e) => setWkt(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
-            />
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                Locate &amp; Plot Parcel Boundary on OpenStreetMap
+              </label>
+              <OsmParcelMap
+                interactive
+                showExistingParcels
+                wkt={wkt}
+                label={parcelReference || 'Application Plot'}
+                address={address}
+                heightClassName="h-64"
+                onSelectWkt={(newWkt, discoveredAddress) => {
+                  setWkt(newWkt);
+                  if (discoveredAddress) {
+                    const shortLabel = discoveredAddress.split(',').slice(0, 3).join(', ').trim();
+                    if (shortLabel) setAddress(shortLabel);
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Parcel Boundary WKT (WGS 84 EPSG:4326)
+              </label>
+              <textarea
+                rows={2}
+                required
+                value={wkt}
+                onChange={(e) => setWkt(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+            </div>
           </div>
 
           {/* Document Attachment */}

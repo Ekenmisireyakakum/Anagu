@@ -2,32 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import MetaMaskConnectButton from './MetaMaskConnectButton';
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  const [hasSession, setHasSession] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/auth/me')
-      .then((res) => {
-        if (active) setHasSession(res.ok);
-      })
-      .catch(() => {
-        if (active) setHasSession(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [pathname]);
 
   const navItems = [
     { href: '/', label: 'Overview' },
+    { href: '/marketplace', label: 'Buy Land' },
+    { href: '/register-land', label: 'Register Land' },
     { href: '/map', label: 'GIS Map' },
-    { href: '/how-it-works', label: 'Workflow' },
-    { href: '/evaluation', label: 'Evaluation' },
-    { href: '/about', label: 'About' },
   ];
 
   return (
@@ -48,7 +32,9 @@ export default function SiteHeader() {
                 key={item.href}
                 href={item.href}
                 className={`whitespace-nowrap shrink-0 transition-colors hover:text-slate-900 ${
-                  isActive ? 'text-slate-900 underline underline-offset-4 decoration-emerald-700 decoration-2' : ''
+                  isActive
+                    ? 'text-slate-900 underline underline-offset-4 decoration-emerald-700 decoration-2'
+                    : ''
                 }`}
               >
                 {item.label}
@@ -58,12 +44,7 @@ export default function SiteHeader() {
         </nav>
 
         <div className="flex items-center shrink-0">
-          <Link
-            href={hasSession ? '/dashboard' : '/login'}
-            className="px-4 py-2 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap shrink-0"
-          >
-            {hasSession ? 'Open Console' : 'Sign In'}
-          </Link>
+          <MetaMaskConnectButton compact />
         </div>
       </div>
     </header>

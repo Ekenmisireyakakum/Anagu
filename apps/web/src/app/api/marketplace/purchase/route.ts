@@ -1,0 +1,53 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  createSessionToken,
+  purchaseLandListing,
+  resolveOrCreateWalletOwner,
+} from '../../../../lib/anagu-store';
+import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    if (!body?.listingId) {
+      return NextResponse.json({ message: 'listingId is required' }, { status: 400 });
+    }
+
+    const sessionUser = getAuthenticatedUser(request);
+    const owner =
+      sessionUser ||
+      resolveOrCreateWalletOwner({
+        walletAddress: typeof body.buyerWallet === 'string' ? body.buyerWallet : undefined,
+        fullName: typeof body.buyerName === 'string' ? body.buyerName : undefined,
+        walletProof: body.walletProof ?? null,
+      });
+
+    const paymentMethod =
+      body.paymentMethod === 'TRUST_WALLET_ETH'
+        ? 'TRUST_WALLET_ETH'
+        : body.paymentMethod === 'METAMASK_ETH'
+        ? 'METAMASK_ETH'
+        : 'REGISTRY_ESCROW';
+
+    const result = purchaseLandListing(owner, String(body.listingId), {
+      paymentMethod,
+      walletProof: body.walletProof ?? null,
+    });
+
+    const response = NextResponse.json({ ...result, owner }, { status: 200 });
+    if (!sessionUser) {
+      const token = createSessionToken(owner);
+      response.cookies.set(SESSION_COOKIE_NAME, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 86400,
+      });
+    }
+    return response;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Land purchase failed';
+    const status = message.startsWith('FORBIDDEN:') ? 403 : 400;
+    return NextResponse.json({ message }, { status });
+  }
+}

@@ -15,20 +15,23 @@ export default function SiteFooter() {
           </p>
         </div>
         <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-slate-600">
-          <Link href="/about" className="hover:text-slate-900 whitespace-nowrap">
-            About
+          <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap">
+            Buy Land
           </Link>
-          <Link href="/how-it-works" className="hover:text-slate-900 whitespace-nowrap">
-            How It Works
+          <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap">
+            Register Land
           </Link>
           <Link href="/map" className="hover:text-slate-900 whitespace-nowrap">
             GIS Map
           </Link>
-          <Link href="/evaluation" className="hover:text-slate-900 whitespace-nowrap">
-            Evaluation
+          <Link href="/how-it-works" className="hover:text-slate-900 whitespace-nowrap">
+            Workflow
           </Link>
-          <Link href="/contact" className="hover:text-slate-900 whitespace-nowrap">
-            Contact
+          <Link href="/dashboard" className="hover:text-slate-900 whitespace-nowrap">
+            Registry Console
+          </Link>
+          <Link href="/about" className="hover:text-slate-900 whitespace-nowrap">
+            About
           </Link>
         </nav>
       </div>

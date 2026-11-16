@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAnaguStore, submitLandApplication } from '../../../lib/anagu-store';
-import { getAuthenticatedUser } from '../../../lib/server-auth';
+import {
+  createSessionToken,
+  getAnaguStore,
+  resolveOrCreateWalletOwner,
+  submitLandApplication,
+} from '../../../lib/anagu-store';
+import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
   const user = getAuthenticatedUser(request);
@@ -15,17 +20,33 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const user = getAuthenticatedUser(request);
-  if (!user) {
-    return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
-  }
   try {
     const body = await request.json();
-    const { application, deduplicated } = submitLandApplication(user, body);
-    return NextResponse.json(
-      { application, deduplicated },
+    const sessionUser = getAuthenticatedUser(request);
+    const applicant =
+      sessionUser ||
+      resolveOrCreateWalletOwner({
+        walletAddress: typeof body.walletAddress === 'string' ? body.walletAddress : undefined,
+        fullName: typeof body.claimantName === 'string' ? body.claimantName : undefined,
+        walletProof: body.walletProof ?? null,
+      });
+
+    const { application, deduplicated } = submitLandApplication(applicant, body);
+    const response = NextResponse.json(
+      { application, deduplicated, owner: applicant },
       { status: deduplicated ? 200 : 201 },
     );
+
+    if (!sessionUser) {
+      const token = createSessionToken(applicant);
+      response.cookies.set(SESSION_COOKIE_NAME, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 86400,
+      });
+    }
+    return response;
   } catch (err) {
     return NextResponse.json(
       { message: err instanceof Error ? err.message : 'Failed to submit application' },

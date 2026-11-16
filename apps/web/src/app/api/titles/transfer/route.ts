@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       Number(body.tokenId),
       String(body.newOwnerEmailOrId || ''),
       Boolean(body.bypassAttempt),
+      body.walletProof || null,
     );
     return NextResponse.json(title);
   } catch (err) {

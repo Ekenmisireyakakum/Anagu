@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useFirebase } from '../FirebaseContext';
+import { useWallet } from '../WalletContext';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
 
 interface TitlesAndGovernancePanelProps {
@@ -14,6 +16,8 @@ export default function TitlesAndGovernancePanel({
   titles,
   onRefresh,
 }: TitlesAndGovernancePanelProps) {
+  const wallet = useWallet();
+  const firebase = useFirebase();
   const [transferTokenId, setTransferTokenId] = useState<number>(titles[0]?.tokenId || 1001);
   const [recipientEmail, setRecipientEmail] = useState('surveyor@anagu.gov.ng');
   const [revokeTokenId, setRevokeTokenId] = useState<number>(titles[0]?.tokenId || 1001);
@@ -22,6 +26,7 @@ export default function TitlesAndGovernancePanel({
   const [justification, setJustification] = useState(
     'Public transit right-of-way expansion under Section 28(1) of the Land Use Act 1978.',
   );
+  const [signWithMetaMask, setSignWithMetaMask] = useState(true);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -29,6 +34,20 @@ export default function TitlesAndGovernancePanel({
     setBusy(true);
     setFeedback(null);
     try {
+      const targetTitle = titles.find((t) => t.tokenId === Number(transferTokenId));
+      let walletProof = null;
+      if (!bypassAttempt && user.role === 'REGISTRAR' && wallet.isConnected && signWithMetaMask && targetTitle) {
+        walletProof = await wallet.authorizeRegistryAction({
+          kind: 'TRANSFER_OWNERSHIP',
+          tokenId: Number(transferTokenId),
+          parcelReference: targetTitle.parcelReference,
+          newOwnerAddress: recipientEmail.startsWith('0x')
+            ? recipientEmail
+            : targetTitle.ownerAddress,
+          actorRole: user.role,
+        });
+      }
+
       const res = await fetch('/api/titles/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,16 +55,20 @@ export default function TitlesAndGovernancePanel({
           tokenId: Number(transferTokenId),
           newOwnerEmailOrId: recipientEmail,
           bypassAttempt,
+          walletProof,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Transfer failed');
+      if (firebase.firebaseUser && data?.tokenId) {
+        await firebase.syncTitle(data as DigitalLandTitle).catch(() => {});
+      }
       setFeedback({
         type: 'ok',
         text: `Registry transfer executed: Token #${data.tokenId} transferred to ${data.ownerName} (tx ${data.txHash.slice(
           0,
           16,
-        )}...).`,
+        )}...)${walletProof ? ` · Signed by ${walletProof.signerAddress.slice(0, 8)}...` : ''}.`,
       });
       await onRefresh();
     } catch (err) {
@@ -63,6 +86,19 @@ export default function TitlesAndGovernancePanel({
     setBusy(true);
     setFeedback(null);
     try {
+      const targetTitle = titles.find((t) => t.tokenId === Number(revokeTokenId));
+      let walletProof = null;
+      if (user.role === 'GOVERNOR' && wallet.isConnected && signWithMetaMask && targetTitle) {
+        walletProof = await wallet.authorizeRegistryAction({
+          kind: 'REVOKE_TITLE',
+          tokenId: Number(revokeTokenId),
+          parcelReference: targetTitle.parcelReference,
+          grounds,
+          administrativeReference: adminRef,
+          actorRole: user.role,
+        });
+      }
+
       const res = await fetch('/api/titles/revoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,13 +107,19 @@ export default function TitlesAndGovernancePanel({
           grounds,
           administrativeReference: adminRef,
           justification,
+          walletProof,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Revocation failed');
+      if (firebase.firebaseUser && data?.tokenId) {
+        await firebase.syncTitle(data as DigitalLandTitle).catch(() => {});
+      }
       setFeedback({
         type: 'ok',
-        text: `Statutory revocation executed on Token #${data.tokenId} (${data.parcelReference}) under "${data.revocationGrounds}". Future transfers are permanently blocked.`,
+        text: `Statutory revocation executed on Token #${data.tokenId} (${data.parcelReference}) under "${data.revocationGrounds}". Future transfers are permanently blocked.${
+          walletProof ? ` · Signed by ${walletProof.signerAddress.slice(0, 8)}...` : ''
+        }`,
       });
       await onRefresh();
     } catch (err) {
@@ -101,6 +143,23 @@ export default function TitlesAndGovernancePanel({
           }`}
         >
           {feedback.text}
+        </div>
+      )}
+
+      {wallet.isConnected && (
+        <div className="bg-white border border-slate-200 rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="font-mono text-slate-600">
+            MetaMask Connected: <strong className="text-slate-900">{wallet.address}</strong> · {wallet.chainName}
+          </span>
+          <label className="flex items-center gap-1.5 font-medium text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={signWithMetaMask}
+              onChange={(e) => setSignWithMetaMask(e.target.checked)}
+              className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+            />
+            Require MetaMask signature on authorized actions
+          </label>
         </div>
       )}
 
