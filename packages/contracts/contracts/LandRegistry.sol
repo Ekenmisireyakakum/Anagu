@@ -74,7 +74,7 @@ contract LandRegistry is AccessControl, ReentrancyGuard {
         require(record.status == RecordStatus.Active, "LandRegistry: record not active");
         address oldOwner = record.currentOwner;
         uint256 tokenId = record.tokenId;
-        landTitleNFT.safeTransferFrom(oldOwner, newOwner, tokenId);
+        landTitleNFT.registryTransfer(oldOwner, newOwner, tokenId);
         record.currentOwner = newOwner;
         record.status = RecordStatus.Active;
         record.lastUpdatedAt = block.timestamp;

@@ -62,6 +62,12 @@ contract LandTitleNFT is ERC721URIStorage, AccessControl, ReentrancyGuard {
         _burn(tokenId);
     }
 
+    /// @notice Transfer a token on behalf of the registry, bypassing the ERC721 approval check.
+    /// Only callable by addresses holding REGISTRY_ROLE (i.e. the LandRegistry contract).
+    function registryTransfer(address from, address to, uint256 tokenId) external onlyRole(REGISTRY_ROLE) {
+        _transfer(from, to, tokenId);
+    }
+
     function revoke(uint256 tokenId, string memory grounds) external onlyRole(GOVERNOR_ROLE) {
         require(!isRevoked[tokenId], "LandTitleNFT: already revoked");
         isRevoked[tokenId] = true;
