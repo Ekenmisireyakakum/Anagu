@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Write Besu validator key files for all 4 nodes and update genesis.json with real Hardhat test addresses and computed QBFT extraData. Also replace genesis.README.md with the required production-warning documentation. This feature is independent of FEAT-002 and FEAT-003.",
+  "status": "pending",
+  "steps": [
+    "Write hex private key (no 0x prefix, no trailing newline) to C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node1\\key: ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    "Write hex private key to C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node2\\key: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+    "Write hex private key to C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node3\\key: 5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+    "Write hex private key to C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node4\\key: 7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+    "Replace C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\genesis.json: keep all existing config fields (chainId 1337, qbft settings, gasLimit, difficulty, etc.), update 'extraData' to 0xf87aa00000000000000000000000000000000000000000000000000000000000000000f854943c44cdddb6a900fa2b585dd299e03d12fa4293bc9470997970c51812dc3a010c7d01b50e0d17dc79c89490f79bf6eb2c4f870365e785982e1f101e93b90694f39fd6e51aad88f6f4ce6ab8827279cfffb92266c080c0, replace 'alloc' with 4 Hardhat addresses each with balance 0xad78ebc5ac6200000: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266, 0x70997970C51812dc3A010C7d01b50e0d17dc79C8, 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, 0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+    "Replace C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\genesis.README.md with documentation covering: (a) NEVER use these Hardhat test keys in production, (b) how to generate real keys with 'docker run hyperledger/besu:latest operator generate-blockchain-config', (c) the validator address list with node assignments, (d) how to update extraData with 'besu rlp encode --type=QBFT_EXTRA_DATA --validators=ADDR1,ADDR2,ADDR3,ADDR4'"
+  ],
+  "acceptance_criteria": [
+    "C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node1\\key contains exactly 64 hex characters with no prefix or newline",
+    "C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node2\\key contains exactly 64 hex characters with no prefix or newline",
+    "C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node3\\key contains exactly 64 hex characters with no prefix or newline",
+    "C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node4\\key contains exactly 64 hex characters with no prefix or newline",
+    "genesis.json extraData equals 0xf87aa00000000000000000000000000000000000000000000000000000000000000000f854943c44cdddb6a900fa2b585dd299e03d12fa4293bc9470997970c51812dc3a010c7d01b50e0d17dc79c89490f79bf6eb2c4f870365e785982e1f101e93b90694f39fd6e51aad88f6f4ce6ab8827279cfffb92266c080c0",
+    "genesis.json alloc contains all 4 Hardhat addresses each with balance 0xad78ebc5ac6200000",
+    "genesis.README.md contains the string 'NEVER use in production' or 'NEVER USE IN PRODUCTION'"
+  ],
+  "verification": [
+    "Get-Content C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\validators\\node1\\key — must print ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    "Get-Content C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\genesis.json | ConvertFrom-Json | Select -ExpandProperty extraData — must print the exact extraData string",
+    "Get-Content C:\\Users\\StarLab\\Desktop\\Library\\Anagu\\infrastructure\\besu\\genesis.README.md — must contain NEVER"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

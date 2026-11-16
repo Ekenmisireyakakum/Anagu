@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase2-blockchain",
+  "task_description": "Implement ANAGU Phase 2 blockchain work: Besu validator keys + genesis.json update, Solidity contracts (LandTitleNFT, LandRegistry, ValidatorRegistry) with Hardhat scripts and 24 tests, and NestJS BlockchainModule wiring.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

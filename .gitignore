@@ -43,11 +43,6 @@ infrastructure/besu/validators/node2/key
 infrastructure/besu/validators/node3/key
 infrastructure/besu/validators/node4/key
 
-# Mobile build artifacts
-apps/mobile/.expo/
-apps/mobile/android/
-apps/mobile/ios/
-
 # Prisma
 packages/database/node_modules/
 

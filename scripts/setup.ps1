@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  ANAGU Platform — Windows Setup Script
+  ANAGU Platform - Windows Setup Script
 .DESCRIPTION
   Checks prerequisites, creates .env from .env.example if needed,
   starts infrastructure services (postgres, redis, minio, mosquitto),
@@ -10,7 +10,7 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "=================================================" -ForegroundColor Cyan
-Write-Host " ANAGU Land Administration Platform — Setup" -ForegroundColor Cyan
+Write-Host " ANAGU Land Administration Platform - Setup" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -35,12 +35,12 @@ try {
 }
 
 # ------------------------------------------------------------------
-# 2. Create .env from .env.example if it doesn't exist
+# 2. Create .env from .env.example if it does not exist
 # ------------------------------------------------------------------
 Write-Host "[2/5] Checking .env file..." -ForegroundColor Yellow
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$rootDir   = Split-Path -Parent $scriptDir
-$envFile   = Join-Path $rootDir ".env"
+$scriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$rootDir    = Split-Path -Parent $scriptDir
+$envFile    = Join-Path $rootDir ".env"
 $envExample = Join-Path $rootDir ".env.example"
 
 if (-not (Test-Path $envFile)) {
@@ -73,11 +73,12 @@ Write-Host "  Services started." -ForegroundColor Green
 # ------------------------------------------------------------------
 Write-Host "[4/5] Waiting for PostgreSQL to be ready..." -ForegroundColor Yellow
 $maxAttempts = 30
-$attempt = 0
+$attempt     = 0
+$healthy     = $false
 do {
   Start-Sleep -Seconds 2
   $attempt++
-  $status = docker compose ps postgres --format json 2>&1
+  $status  = docker compose ps postgres --format json 2>&1
   $healthy = ($status | Select-String -Pattern '"Health":"healthy"' -Quiet)
   if ($healthy) {
     Write-Host "  PostgreSQL is healthy." -ForegroundColor Green
@@ -101,10 +102,10 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host " Infrastructure ready!" -ForegroundColor Green
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Next steps:"
+Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Review and update .env with real secrets" -ForegroundColor White
 Write-Host "  2. Install dependencies: npm install" -ForegroundColor White
-Write-Host "  3. Run DB migrations: cd packages/database && npx prisma migrate dev" -ForegroundColor White
+Write-Host "  3. Run DB migrations: cd packages/database; npx prisma migrate dev" -ForegroundColor White
 Write-Host "  4. Start API: npm run dev:api" -ForegroundColor White
 Write-Host "  5. Start Web: npm run dev:web" -ForegroundColor White
 Write-Host ""

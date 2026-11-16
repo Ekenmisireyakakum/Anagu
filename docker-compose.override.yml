@@ -1,5 +1,3 @@
-version: '3.9'
-
 # Development overrides — these are applied automatically when running docker compose up
 # They override settings in docker-compose.yml for local development
 

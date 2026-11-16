@@ -9,6 +9,7 @@
   "scripts": {
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
     "build:all": "npm run build --workspaces",
     "test:all": "npm run test --workspaces --if-present",
     "docker:up": "docker compose up -d",
