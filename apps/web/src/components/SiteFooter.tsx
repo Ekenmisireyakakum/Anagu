@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-export default function SiteFooter() {
+export default function SiteFooter({ adminMode = false }: { adminMode?: boolean }) {
   return (
     <footer className="bg-white border-t border-slate-200 mt-16">
       <div className="max-w-7xl mx-auto px-6 py-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -14,23 +14,28 @@ export default function SiteFooter() {
             recognized Nigerian statutory Certificates of Occupancy without state registry execution.
           </p>
         </div>
-        <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-slate-600">
-          <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap">
-            Register Land
-          </Link>
-          <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap">
-            Access Land
-          </Link>
-          <Link href="/how-it-works" className="hover:text-slate-900 whitespace-nowrap">
-            Workflow
-          </Link>
-          <Link href="/dashboard" className="hover:text-slate-900 whitespace-nowrap">
-            Registry Console
-          </Link>
-          <Link href="/about" className="hover:text-slate-900 whitespace-nowrap">
-            About
-          </Link>
-        </nav>
+        {!adminMode && (
+          <nav className="flex flex-wrap items-center gap-6 text-xs font-medium text-slate-600">
+            <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap">
+              Register Land
+            </Link>
+            <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap">
+              Access Land
+            </Link>
+            <Link href="/how-it-works" className="hover:text-slate-900 whitespace-nowrap">
+              Workflow
+            </Link>
+            <Link href="/dashboard" className="hover:text-slate-900 whitespace-nowrap">
+              Registry Console
+            </Link>
+            <Link href="/admin/login" className="hover:text-slate-900 whitespace-nowrap">
+              Admin Portal
+            </Link>
+            <Link href="/about" className="hover:text-slate-900 whitespace-nowrap">
+              About
+            </Link>
+          </nav>
+        )}
       </div>
     </footer>
   );

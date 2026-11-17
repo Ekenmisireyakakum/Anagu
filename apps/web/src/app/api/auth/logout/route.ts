@@ -1,13 +1,8 @@
-import { NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionCookieOptions, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const response = NextResponse.json({ message: 'Signed out' });
-  response.cookies.set(SESSION_COOKIE_NAME, '', {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  });
+  response.cookies.set(SESSION_COOKIE_NAME, '', getSessionCookieOptions(request, 0));
   return response;
 }

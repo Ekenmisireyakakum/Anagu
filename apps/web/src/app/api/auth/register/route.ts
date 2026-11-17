@@ -5,7 +5,7 @@ import {
   persistStoreToSupabase,
   registerCitizenUser,
 } from '../../../../lib/anagu-store';
-import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
+import { getSessionCookieOptions, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,12 +27,7 @@ export async function POST(request: NextRequest) {
     await persistStoreToSupabase();
     const token = createSessionToken(user);
     const response = NextResponse.json({ user, accessToken: token }, { status: 201 });
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400,
-    });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(request, 86400));
     return response;
   } catch (err) {
     return NextResponse.json(

@@ -386,6 +386,17 @@ function initStore(): AnaguGlobalStore {
       isActive: true,
       createdAt: now,
     },
+    {
+      id: '11111111-1111-4111-8111-111111111106',
+      email: 'davidemma256@gmail.com',
+      passwordHash: hashPassword('@David123'),
+      role: 'LAND_ADMINISTRATOR',
+      fullName: 'David Emma (Administrator)',
+      phone: '+234 803 410 2206',
+      walletAddress: '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720',
+      isActive: true,
+      createdAt: now,
+    },
   ];
 
   const seedParcel = listParcels()[0];
@@ -990,11 +1001,12 @@ export function verifySessionToken(token: string): SafeUser | null {
 }
 
 export function authenticateUser(email: string, password: string): SafeUser | null {
+  const normalized = email.trim().toLowerCase();
   const user = getAnaguStore().users.find(
-    (u) => u.email.toLowerCase() === email.trim().toLowerCase(),
+    (u) => u.email.trim().toLowerCase() === normalized,
   );
   if (!user || !user.isActive) return null;
-  if (user.passwordHash !== hashPassword(password)) return null;
+  if (!user.passwordHash || user.passwordHash !== hashPassword(password)) return null;
   return toSafeUser(user);
 }
 
@@ -1692,6 +1704,7 @@ export function performApplicationWorkflowAction(
     boundaryConfirmed?: boolean;
     legalNotes?: string;
     registrarNotes?: string;
+    adminOverride?: boolean;
     walletProof?: WalletProofInput | null;
   },
 ): LandApplicationRecord {
@@ -1946,13 +1959,21 @@ export function performApplicationWorkflowAction(
 
     case 'VERIFY_AND_PUBLISH': {
       if (user.role !== 'LAND_ADMINISTRATOR' && user.role !== 'REGISTRAR') {
-        recordAudit(user.id, user.fullName, user.role, action, 'APPLICATION', app.id, 'DENIED', 'Only Land Administrator or Registrar can verify deed and publish to Check Lands');
-        throw new Error('FORBIDDEN: Only Land Administrator or Registrar can verify deed and publish to Check Lands');
+        recordAudit(user.id, user.fullName, user.role, action, 'APPLICATION', app.id, 'DENIED', 'Only Land Administrator or Registrar can approve land and publish to Access Land');
+        throw new Error('FORBIDDEN: Only Land Administrator or Registrar can approve land and publish to Access Land');
+      }
+      if (app.status === 'REVOKED' || app.status === 'CANCELLED') {
+        throw new Error(`Cannot approve a ${app.status.toLowerCase()} land application`);
       }
       const spatial = verifyWktParcel(app.wkt, app.id, app.parcelId || undefined);
       app.spatialVerification = spatial;
-      if (!spatial.passed) {
-        throw new Error('Cannot publish to Check Lands: GIS spatial check failed (invalid geometry or overlap detected)');
+      if (!spatial.isValidGeometry) {
+        throw new Error(`Cannot approve land: invalid parcel geometry (${spatial.errorDetails || 'check WKT coordinates'})`);
+      }
+      if (!spatial.passed && !payload?.adminOverride) {
+        throw new Error(
+          `Overlap detected with ${spatial.overlappingParcels.map((p) => p.parcelNumber).join(', ')}. Use Admin Override to approve or Reject this submission.`,
+        );
       }
       if (app.documents.length === 0) {
         throw new Error('At least one deed or land certificate document is required before verification');
@@ -2492,6 +2513,7 @@ export function listLandListings(filters?: {
   verificationStatus?: string | null;
   q?: string | null;
   includeRevoked?: boolean;
+  includeUnapproved?: boolean;
 }): LandListingRecord[] {
   const store = getAnaguStore();
   if (!store.listings) {
@@ -2521,16 +2543,18 @@ export function listLandListings(filters?: {
     verifiedListings.map((item) => item.parcelReference.toLowerCase()),
   );
 
-  const unverifiedListings: LandListingRecord[] = store.applications
-    .filter(
-      (app) =>
-        app.status !== 'REGISTERED' &&
-        app.status !== 'REJECTED' &&
-        app.status !== 'REVOKED' &&
-        app.status !== 'CANCELLED' &&
-        !listedRefs.has(app.parcelReference.toLowerCase()),
-    )
-    .map((app) => buildUnverifiedListingFromApp(app, store.users));
+  const unverifiedListings: LandListingRecord[] = filters?.includeUnapproved
+    ? store.applications
+        .filter(
+          (app) =>
+            app.status !== 'REGISTERED' &&
+            app.status !== 'REJECTED' &&
+            app.status !== 'REVOKED' &&
+            app.status !== 'CANCELLED' &&
+            !listedRefs.has(app.parcelReference.toLowerCase()),
+        )
+        .map((app) => buildUnverifiedListingFromApp(app, store.users))
+    : [];
 
   const combined = [...verifiedListings, ...unverifiedListings];
 
@@ -2692,32 +2716,12 @@ export function purchaseLandListing(
   if (!store.listings) listLandListings();
   if (!store.purchases) store.purchases = [];
 
-  let listing = store.listings.find((l) => l.id === listingId);
-  let sourceApp: LandApplicationRecord | undefined;
-
-  if (!listing && listingId.startsWith('app-listing-')) {
-    const appId = listingId.slice('app-listing-'.length);
-    sourceApp = store.applications.find((a) => a.id === appId);
-    if (
-      sourceApp &&
-      sourceApp.status !== 'REGISTERED' &&
-      sourceApp.status !== 'REJECTED' &&
-      sourceApp.status !== 'REVOKED' &&
-      sourceApp.status !== 'CANCELLED'
-    ) {
-      const alreadyInListings = store.listings.find(
-        (l) => l.parcelReference.toLowerCase() === sourceApp!.parcelReference.toLowerCase(),
-      );
-      if (alreadyInListings) {
-        listing = alreadyInListings;
-      } else {
-        listing = buildUnverifiedListingFromApp(sourceApp, store.users);
-        store.listings.unshift(listing);
-      }
-    }
-  }
+  const listing = store.listings.find((l) => l.id === listingId);
 
   if (!listing) {
+    if (listingId.startsWith('app-listing-')) {
+      throw new Error('This land parcel is pending Administrator approval before it can be accessed or purchased.');
+    }
     throw new Error('Land listing not found');
   }
   if (listing.status === 'REVOKED') {
@@ -2776,79 +2780,68 @@ export function purchaseLandListing(
       action: 'TRANSFERRED',
     });
   } else {
-    const appId = sourceApp ? sourceApp.id : crypto.randomUUID();
+    const appId = crypto.randomUUID();
     const tokenId = store.nextTokenId++;
     const blockNumber = store.nextBlockNumber++;
     const spatial = verifyWktParcel(listing.wkt, appId, listing.parcelId);
     const deedHash = sha256(`acquisition:${listing.parcelReference}:${user.id}:${now}`);
 
-    if (sourceApp) {
-      sourceApp.applicantId = user.id;
-      sourceApp.applicantName = user.fullName;
-      sourceApp.applicantEmail = user.email;
-      sourceApp.claimantName = user.fullName;
-      sourceApp.registrarNotes = `Acquired as unverified parcel via ${resolvedWalletLabel} by ${user.fullName}; awaiting administrator verification.`;
-      sourceApp.tokenId = tokenId;
-      sourceApp.txHash = txHash;
-      sourceApp.updatedAt = now;
-    } else {
-      const applicationRecord: LandApplicationRecord = {
-        id: appId,
-        applicantId: user.id,
-        applicantName: user.fullName,
-        applicantEmail: user.email,
-        parcelId: listing.parcelId,
-        parcelReference: listing.parcelReference,
-        state: listing.state,
-        lga: listing.lga,
-        address: listing.address,
-        wkt: listing.wkt,
-        claimantName: user.fullName,
-        nationalIdHash: sha256(user.id),
-        documents: [
-          {
-            id: crypto.randomUUID(),
-            fileName: `Allocation_Deed_${listing.parcelReference}.pdf`,
-            fileType: 'application/pdf',
-            fileSizeBytes: 342100,
-            sha256Hash: deedHash,
-            objectKey: `anagu-documents/${listing.parcelReference}/Allocation_Deed_${listing.parcelReference}.pdf`,
-            uploadedAt: now,
-          },
-        ],
-        status: 'REGISTERED',
-        spatialVerification: spatial,
-        surveyReport: {
+    const applicationRecord: LandApplicationRecord = {
+      id: appId,
+      applicantId: user.id,
+      applicantName: user.fullName,
+      applicantEmail: user.email,
+      parcelId: listing.parcelId,
+      parcelReference: listing.parcelReference,
+      state: listing.state,
+      lga: listing.lga,
+      address: listing.address,
+      wkt: listing.wkt,
+      claimantName: user.fullName,
+      nationalIdHash: sha256(user.id),
+      documents: [
+        {
           id: crypto.randomUUID(),
-          surveyorId: store.users[1]?.id || 'SYSTEM_SURVEYOR',
-          surveyorName: store.users[1]?.fullName || 'Lagos State Surveyor-General',
-          findings: 'Pre-surveyed state parcel boundaries verified under EPSG:4326.',
-          boundaryConfirmed: true,
-          submittedAt: now,
+          fileName: `Allocation_Deed_${listing.parcelReference}.pdf`,
+          fileType: 'application/pdf',
+          fileSizeBytes: 342100,
+          sha256Hash: deedHash,
+          objectKey: `anagu-documents/${listing.parcelReference}/Allocation_Deed_${listing.parcelReference}.pdf`,
+          uploadedAt: now,
         },
-        oracleVerification: {
-          id: crypto.randomUUID(),
-          applicationId: appId,
-          institutionalVerified: true,
-          communityVerified: true,
-          institutionalDetails: { registry: 'LASRECCA', source: listing.listingType },
-          communityDetails: { allocationCleared: true },
-          overallOutcome: 'VERIFIED',
-          notes: 'Cleared via ANAGU verified land acquisition settlement.',
-          verifiedAt: now,
-        },
-        legalVerified: true,
-        legalOfficerName: store.users[2]?.fullName || 'ANAGU Registry Desk',
-        legalNotes: 'Statutory allocation settled and deed issued.',
-        registrarNotes: `Acquired via ${resolvedWalletLabel} and minted to ${user.fullName}.`,
-        tokenId,
-        txHash,
-        idempotencyKey: null,
+      ],
+      status: 'REGISTERED',
+      spatialVerification: spatial,
+      surveyReport: {
+        id: crypto.randomUUID(),
+        surveyorId: store.users[1]?.id || 'SYSTEM_SURVEYOR',
+        surveyorName: store.users[1]?.fullName || 'Lagos State Surveyor-General',
+        findings: 'Pre-surveyed state parcel boundaries verified under EPSG:4326.',
+        boundaryConfirmed: true,
         submittedAt: now,
-        updatedAt: now,
-      };
-      store.applications.unshift(applicationRecord);
-    }
+      },
+      oracleVerification: {
+        id: crypto.randomUUID(),
+        applicationId: appId,
+        institutionalVerified: true,
+        communityVerified: true,
+        institutionalDetails: { registry: 'LASRECCA', source: listing.listingType },
+        communityDetails: { allocationCleared: true },
+        overallOutcome: 'VERIFIED',
+        notes: 'Cleared via ANAGU verified land acquisition settlement.',
+        verifiedAt: now,
+      },
+      legalVerified: true,
+      legalOfficerName: store.users[2]?.fullName || 'ANAGU Registry Desk',
+      legalNotes: 'Statutory allocation settled and deed issued.',
+      registrarNotes: `Acquired via ${resolvedWalletLabel} and minted to ${user.fullName}.`,
+      tokenId,
+      txHash,
+      idempotencyKey: null,
+      submittedAt: now,
+      updatedAt: now,
+    };
+    store.applications.unshift(applicationRecord);
 
     titleRecord = {
       tokenId,

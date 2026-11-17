@@ -21,7 +21,7 @@ export default function RegisterLandPage() {
         {submittedNotice && (
           <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-emerald-950 flex flex-wrap items-center justify-between gap-3">
             <span>
-              Your land registration and deed submission has been recorded and listed as Unverified on Access Land while awaiting Administrator deed verification.
+              Your land registration and deed submission has been recorded and queued for Administrator approval before appearing on Access Land.
             </span>
             <div className="flex items-center gap-3 shrink-0">
               <Link
@@ -31,10 +31,10 @@ export default function RegisterLandPage() {
                 Access Land →
               </Link>
               <Link
-                href="/dashboard"
+                href="/admin/login"
                 className="font-semibold text-slate-800 underline whitespace-nowrap"
               >
-                Open Registry Console →
+                Admin Portal →
               </Link>
             </div>
           </div>

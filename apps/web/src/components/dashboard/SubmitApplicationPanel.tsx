@@ -501,7 +501,7 @@ export default function SubmitApplicationPanel({
       setFeedback({
         type: 'ok',
         parcelRef: createdApp.parcelReference,
-        text: `Land parcel "${createdApp.parcelTitle || createdApp.parcelReference}" and ${createdApp.documents.length} SHA-256 hashed deed document(s) submitted ($${(createdApp.priceUsd || parsedPriceUsd).toLocaleString()} USD). Your plot is now visible as Unverified on Access Land while awaiting Administrator deed verification.`,
+        text: `Land parcel "${createdApp.parcelTitle || createdApp.parcelReference}" and ${createdApp.documents.length} SHA-256 hashed deed document(s) submitted ($${(createdApp.priceUsd || parsedPriceUsd).toLocaleString()} USD). It is now queued for Administrator approval before appearing on Access Land.`,
       });
 
       if (onSubmitted) {
@@ -585,7 +585,7 @@ export default function SubmitApplicationPanel({
             Register Land &amp; Submit Deed for Verification
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">
-            Enter your parcel details, set your price in US Dollars ($), and upload your land deed. Your parcel appears as Unverified on Access Land immediately and upgrades to Verified once the Administrator checks your deed.
+            Enter your parcel details, set your price in US Dollars ($), and upload your land deed. Submissions are reviewed and approved by an Administrator before going live on Access Land.
           </p>
         </div>
 
@@ -608,8 +608,8 @@ export default function SubmitApplicationPanel({
           <span>{feedback.text}</span>
           {feedback.type === 'ok' && (
             <div className="flex items-center gap-3 shrink-0">
-              <Link href="/dashboard" className="font-semibold text-emerald-800 underline">
-                Open Admin / Registry Console →
+              <Link href="/admin/login" className="font-semibold text-emerald-800 underline">
+                Admin Portal →
               </Link>
               <Link href="/marketplace" className="font-semibold text-slate-900 underline">
                 Access Land →

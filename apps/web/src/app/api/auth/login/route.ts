@@ -6,11 +6,11 @@ import {
   persistStoreToSupabase,
   recordAudit,
 } from '../../../../lib/anagu-store';
-import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
+import { getSessionCookieOptions, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureStoreReady();
+    await ensureStoreReady({ force: true });
     const { email, password } = await request.json();
     if (!email || !password) {
       return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
@@ -33,12 +33,7 @@ export async function POST(request: NextRequest) {
     await persistStoreToSupabase();
 
     const response = NextResponse.json({ user, accessToken: token });
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400,
-    });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(request, 86400));
     return response;
   } catch (err) {
     return NextResponse.json(

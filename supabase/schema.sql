@@ -107,3 +107,39 @@ alter table public.anagu_mqtt_logs enable row level security;
 alter table public.anagu_contacts enable row level security;
 alter table public.anagu_parcel_overrides enable row level security;
 alter table public.anagu_meta enable row level security;
+
+-- Helpful indexes for admin approval queue & login lookups
+create index if not exists idx_anagu_users_email on public.anagu_users (email);
+create index if not exists idx_anagu_applications_status on public.anagu_applications (status);
+create index if not exists idx_anagu_listings_status on public.anagu_listings (status);
+
+-- Seed Primary Admin Account (Email: davidemma256@gmail.com, Password hash for @David123)
+insert into public.anagu_users (
+  id,
+  email,
+  password_hash,
+  role,
+  full_name,
+  phone,
+  wallet_address,
+  wallet_verified,
+  is_active
+)
+values (
+  '11111111-1111-4111-8111-111111111106',
+  'davidemma256@gmail.com',
+  'f2822b78c26f3b3ab78e6280b9004630e33f9468df486d2a1e5c4bb28cee4486',
+  'LAND_ADMINISTRATOR',
+  'David Emma (Administrator)',
+  '+234 803 410 2206',
+  '0xa0Ee7A142d267C1f36714E4a8F75612F20a79720',
+  false,
+  true
+)
+on conflict (email) do update
+set
+  password_hash = excluded.password_hash,
+  role = excluded.role,
+  full_name = excluded.full_name,
+  is_active = true;
+

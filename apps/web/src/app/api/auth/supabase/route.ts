@@ -8,7 +8,7 @@ import {
   toSafeUser,
   type UserAccount,
 } from '../../../../lib/anagu-store';
-import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
+import { getSessionCookieOptions, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 import { getSupabaseAuthClient, verifySupabaseJwt } from '../../../../lib/supabase';
 
 export async function POST(request: NextRequest) {
@@ -177,12 +177,7 @@ export async function POST(request: NextRequest) {
     const safeUser = toSafeUser(user);
     const token = createSessionToken(safeUser);
     const response = NextResponse.json({ user: safeUser, accessToken: token });
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400,
-    });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(request, 86400));
     return response;
   } catch (err) {
     return NextResponse.json(

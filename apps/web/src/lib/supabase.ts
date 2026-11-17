@@ -294,7 +294,7 @@ export async function hydrateStoreFromSupabase(
         client.from('anagu_meta').select('*'),
       ]);
 
-      store.users = userRows.map((row) => ({
+      const dbUsers: UserAccount[] = userRows.map((row) => ({
         id: String(row.id),
         email: String(row.email),
         passwordHash: String(row.password_hash || ''),
@@ -307,6 +307,19 @@ export async function hydrateStoreFromSupabase(
         isActive: Boolean(row.is_active),
         createdAt: String(row.created_at),
       }));
+
+      const hasCountersMeta = Boolean(metaRes.data?.some((row) => row.key === 'counters'));
+      if (!hasCountersMeta && (!listingsRes.data || listingsRes.data.length === 0)) {
+        // First-time boot after running schema.sql: keep DB-inserted users (e.g. admin)
+        // and backfill any missing initial registry users, listings, applications, and titles.
+        const dbEmails = new Set(dbUsers.map((u) => u.email.toLowerCase()));
+        const missingSeedUsers = store.users.filter((u) => !dbEmails.has(u.email.toLowerCase()));
+        store.users = [...dbUsers, ...missingSeedUsers];
+        await writeSnapshotToSupabase(client, store);
+        return;
+      }
+
+      store.users = dbUsers;
 
       if (appsRes.data && appsRes.data.length > 0) {
         store.applications = appsRes.data.map((r) => r.data as LandApplicationRecord);

@@ -5,7 +5,11 @@ import {
   persistStoreToSupabase,
   verifyMetaMaskChallenge,
 } from '../../../../../lib/anagu-store';
-import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../../../lib/server-auth';
+import {
+  getAuthenticatedUser,
+  getSessionCookieOptions,
+  SESSION_COOKIE_NAME,
+} from '../../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,18 +44,8 @@ export async function POST(request: NextRequest) {
       accessToken: token,
     });
 
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400,
-    });
-    response.cookies.set('anagu_mm_nonce', '', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-    });
+    response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(request, 86400));
+    response.cookies.set('anagu_mm_nonce', '', getSessionCookieOptions(request, 0));
     return response;
   } catch (err) {
     return NextResponse.json(

@@ -35,9 +35,18 @@ export default function MonitoringAndAdminPanel({
     setUpdatingId(targetId);
     setFeedback(null);
     try {
+      const token =
+        typeof window !== 'undefined'
+          ? window.sessionStorage.getItem('anagu_admin_token') ||
+            window.localStorage.getItem('anagu_admin_token')
+          : null;
       const res = await fetch('/api/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ userId: targetId, ...patch }),
       });
       const data = await res.json();
