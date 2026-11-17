@@ -34,6 +34,7 @@ import {
   signPersonalMessage,
   switchEvmChain,
   switchOrAddBesuChain,
+  walletFromEip6963Event,
   type DiscoveredWallet,
   type Eip1193Provider,
   type WalletProofPayload,
@@ -216,14 +217,34 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true;
+    let lastFocusRefresh = 0;
 
-    const handleDelayedAnnounce = () => {
+    const handleProviderAnnounced = (event: Event) => {
       if (!mounted) return;
+      const incoming = walletFromEip6963Event(event);
+      if (!incoming) return;
+      setDiscoveredWallets((prev) => {
+        if (prev.some((w) => w.id === incoming.id || w.provider === incoming.provider)) {
+          return prev;
+        }
+        const next = [...prev, incoming];
+        setIsMetaMaskAvailable(next.some((w) => w.walletType === 'metamask'));
+        setIsTrustWalletAvailable(next.some((w) => w.walletType === 'trustwallet'));
+        return next;
+      });
+    };
+
+    const handleWindowFocus = () => {
+      if (!mounted) return;
+      const now = Date.now();
+      if (now - lastFocusRefresh < 5000) return;
+      lastFocusRefresh = now;
       void refreshWallets();
     };
+
     if (typeof window !== 'undefined') {
-      window.addEventListener('eip6963:announceProvider', handleDelayedAnnounce);
-      window.addEventListener('focus', handleDelayedAnnounce);
+      window.addEventListener('eip6963:announceProvider', handleProviderAnnounced);
+      window.addEventListener('focus', handleWindowFocus);
     }
 
     discoverAllWalletProviders(400).then(async (all) => {
@@ -272,8 +293,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       if (typeof window !== 'undefined') {
-        window.removeEventListener('eip6963:announceProvider', handleDelayedAnnounce);
-        window.removeEventListener('focus', handleDelayedAnnounce);
+        window.removeEventListener('eip6963:announceProvider', handleProviderAnnounced);
+        window.removeEventListener('focus', handleWindowFocus);
       }
       if (listenerCleanupRef.current) {
         listenerCleanupRef.current();

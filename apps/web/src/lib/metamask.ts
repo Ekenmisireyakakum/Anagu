@@ -332,6 +332,21 @@ function isStrictMetaMaskProvider(p?: Eip1193Provider | null, info?: Eip6963Prov
   );
 }
 
+export function walletFromEip6963Event(event: Event): DiscoveredWallet | null {
+  const announce = event as Eip6963AnnounceEvent;
+  const detail = announce?.detail;
+  if (!detail?.provider || typeof detail.provider.request !== 'function') return null;
+  const meta = inferProviderMeta(detail.provider, detail.info);
+  return {
+    id: meta.id,
+    name: meta.name,
+    rdns: meta.rdns,
+    icon: detail.info?.icon,
+    walletType: meta.walletType,
+    provider: detail.provider,
+  };
+}
+
 export async function discoverAllWalletProviders(timeoutMs = 350): Promise<DiscoveredWallet[]> {
   if (typeof window === 'undefined') return [];
 
