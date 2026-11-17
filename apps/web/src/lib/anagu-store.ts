@@ -223,7 +223,7 @@ export interface ContactSubmission {
 }
 
 export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
-export type LandListingStatus = 'AVAILABLE' | 'SOLD';
+export type LandListingStatus = 'AVAILABLE' | 'SOLD' | 'REVOKED';
 export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use' | 'Agricultural' | 'Industrial';
 
 export type LandListingVerificationStatus = 'VERIFIED' | 'UNVERIFIED';
@@ -1628,6 +1628,7 @@ export function performApplicationWorkflowAction(
     | 'COMPLETE_LEGAL_REVIEW'
     | 'APPROVE_AND_MINT'
     | 'VERIFY_AND_PUBLISH'
+    | 'REVOKE'
     | 'REJECT'
     | 'CANCEL',
   payload?: {
@@ -2040,6 +2041,73 @@ export function performApplicationWorkflowAction(
       return app;
     }
 
+    case 'REVOKE': {
+      if (user.role !== 'LAND_ADMINISTRATOR' && user.role !== 'GOVERNOR') {
+        recordAudit(
+          user.id,
+          user.fullName,
+          user.role,
+          'UNAUTHORIZED_REVOCATION_BLOCKED',
+          'APPLICATION',
+          app.id,
+          'DENIED',
+          `Rejected land revocation attempt by ${user.role} on ${app.parcelReference}.`,
+        );
+        throw new Error('FORBIDDEN: Only Land Administrator or Governor can revoke land records');
+      }
+      if (app.tokenId) {
+        const linkedTitle = store.titles.find((t) => t.tokenId === app.tokenId);
+        if (linkedTitle && !linkedTitle.isRevoked) {
+          revokeLandTitle(user, {
+            tokenId: linkedTitle.tokenId,
+            grounds: 'Overriding Public Interest',
+            administrativeReference: `ADM-REV-${app.parcelReference}`,
+            justification:
+              payload?.registrarNotes?.trim() ||
+              `Administrative revocation executed on ${app.parcelReference}.`,
+            walletProof: payload?.walletProof || null,
+          });
+          return app;
+        }
+      }
+      app.status = 'REVOKED';
+      app.registrarNotes =
+        payload?.registrarNotes?.trim() ||
+        'Land registration and marketplace listing revoked by Administrator.';
+      app.updatedAt = now;
+      if (app.parcelId) {
+        store.parcelStatusOverrides.set(app.parcelId, 'revoked');
+      }
+      if (store.listings) {
+        for (const l of store.listings) {
+          if (l.parcelReference.toLowerCase() === app.parcelReference.toLowerCase()) {
+            l.status = 'REVOKED';
+          }
+        }
+      }
+      publishMqttLog(
+        'anagu/title/revoked',
+        {
+          applicationId: app.id,
+          parcelReference: app.parcelReference,
+          reason: app.registrarNotes,
+          revokedBy: user.fullName,
+        },
+        'ALL',
+      );
+      recordAudit(
+        user.id,
+        user.fullName,
+        user.role,
+        'ADMIN_LAND_REVOKED',
+        'APPLICATION',
+        app.id,
+        'SUCCESS',
+        `Revoked land parcel ${app.parcelReference}: ${app.registrarNotes}`,
+      );
+      return app;
+    }
+
     case 'CANCEL': {
       if (app.applicantId !== user.id && user.role !== 'LAND_ADMINISTRATOR') {
         throw new Error('FORBIDDEN: Only the applicant or Land Administrator can cancel this draft/application');
@@ -2169,7 +2237,7 @@ export function revokeLandTitle(
     throw new Error(`Title #${input.tokenId} not found`);
   }
 
-  if (user.role !== 'GOVERNOR') {
+  if (user.role !== 'GOVERNOR' && user.role !== 'LAND_ADMINISTRATOR') {
     recordAudit(
       user.id,
       user.fullName,
@@ -2178,10 +2246,10 @@ export function revokeLandTitle(
       'TITLE',
       `TOKEN-${input.tokenId}`,
       'DENIED',
-      `Rejected statutory revocation attempt by non-GOVERNOR role (${user.role}) on Title #${input.tokenId}.`,
+      `Rejected statutory revocation attempt by unauthorized role (${user.role}) on Title #${input.tokenId}.`,
     );
     throw new Error(
-      'FORBIDDEN: Only an authorised GOVERNOR_ROLE account may execute statutory revocation under Section 28 of the Land Use Act 1978.',
+      'FORBIDDEN: Only an authorised LAND_ADMINISTRATOR or GOVERNOR account may execute statutory revocation under Section 28 of the Land Use Act 1978.',
     );
   }
 
@@ -2222,12 +2290,22 @@ export function revokeLandTitle(
     action: 'REVOKED',
   });
 
-  // Update GIS parcel status to revoked and application status to REVOKED
+  // Update GIS parcel status to revoked, application status to REVOKED, and remove from active listings
   store.parcelStatusOverrides.set(title.parcelId, 'revoked');
   const app = store.applications.find((a) => a.id === title.applicationId);
   if (app) {
     app.status = 'REVOKED';
     app.updatedAt = now;
+  }
+  if (store.listings) {
+    for (const l of store.listings) {
+      if (
+        l.tokenId === title.tokenId ||
+        l.parcelReference.toLowerCase() === title.parcelReference.toLowerCase()
+      ) {
+        l.status = 'REVOKED';
+      }
+    }
   }
 
   publishMqttLog('anagu/title/revoked', {
@@ -2357,6 +2435,7 @@ export function listLandListings(filters?: {
   listingType?: string | null;
   verificationStatus?: string | null;
   q?: string | null;
+  includeRevoked?: boolean;
 }): LandListingRecord[] {
   const store = getAnaguStore();
   if (!store.listings) {
@@ -2400,6 +2479,9 @@ export function listLandListings(filters?: {
   const combined = [...verifiedListings, ...unverifiedListings];
 
   return combined.filter((item) => {
+    if (!filters?.includeRevoked && item.status === 'REVOKED') {
+      return false;
+    }
     if (
       filters?.verificationStatus &&
       filters.verificationStatus !== 'ALL' &&
@@ -2581,6 +2663,9 @@ export function purchaseLandListing(
 
   if (!listing) {
     throw new Error('Land listing not found');
+  }
+  if (listing.status === 'REVOKED') {
+    throw new Error('This land parcel has been revoked by the Administrator and cannot be purchased.');
   }
   if (listing.status !== 'AVAILABLE') {
     throw new Error('This land parcel has already been acquired and transferred.');
@@ -2813,4 +2898,108 @@ export function purchaseLandListing(
 
   return { listing, purchase, title: titleRecord };
 }
+
+export function revokeMarketplaceListing(
+  user: SafeUser,
+  listingId: string,
+  input?: {
+    grounds?: RevocationGround;
+    administrativeReference?: string;
+    reason?: string;
+    walletProof?: WalletProofInput | null;
+  },
+): { parcelReference: string; status: 'REVOKED' } {
+  if (user.role !== 'LAND_ADMINISTRATOR' && user.role !== 'GOVERNOR') {
+    recordAudit(
+      user.id,
+      user.fullName,
+      user.role,
+      'UNAUTHORIZED_REVOCATION_BLOCKED',
+      'PARCEL',
+      listingId,
+      'DENIED',
+      `Rejected listing revocation attempt by ${user.role} on ${listingId}.`,
+    );
+    throw new Error('FORBIDDEN: Only Land Administrator or Governor can revoke land listings.');
+  }
+
+  const store = getAnaguStore();
+  if (!store.listings) listLandListings({ includeRevoked: true });
+
+  if (listingId.startsWith('app-listing-')) {
+    const appId = listingId.slice('app-listing-'.length);
+    const updatedApp = performApplicationWorkflowAction(user, appId, 'REVOKE', {
+      registrarNotes:
+        input?.reason?.trim() || 'Unverified land parcel revoked by Administrator.',
+      walletProof: input?.walletProof || null,
+    });
+    return { parcelReference: updatedApp.parcelReference, status: 'REVOKED' };
+  }
+
+  const listing = store.listings.find((l) => l.id === listingId);
+  if (!listing) {
+    throw new Error('Land listing not found');
+  }
+  if (listing.status === 'REVOKED') {
+    throw new Error(`Listing ${listing.parcelReference} is already revoked`);
+  }
+
+  if (listing.tokenId !== null) {
+    const title = store.titles.find((t) => t.tokenId === listing.tokenId);
+    if (title && !title.isRevoked) {
+      revokeLandTitle(user, {
+        tokenId: title.tokenId,
+        grounds: input?.grounds || 'Overriding Public Interest',
+        administrativeReference:
+          input?.administrativeReference?.trim() || `ADM-REV-${listing.parcelReference}`,
+        justification:
+          input?.reason?.trim() ||
+          `Statutory revocation of ${listing.parcelReference} executed from Admin Portal.`,
+        walletProof: input?.walletProof || null,
+      });
+      return { parcelReference: listing.parcelReference, status: 'REVOKED' };
+    }
+  }
+
+  listing.status = 'REVOKED';
+  if (listing.parcelId) {
+    store.parcelStatusOverrides.set(listing.parcelId, 'revoked');
+  }
+  const linkedApp = store.applications.find(
+    (a) => a.parcelReference.toLowerCase() === listing.parcelReference.toLowerCase(),
+  );
+  if (linkedApp) {
+    linkedApp.status = 'REVOKED';
+    linkedApp.registrarNotes =
+      input?.reason?.trim() || 'Land listing revoked by Administrator.';
+    linkedApp.updatedAt = new Date().toISOString();
+  }
+
+  publishMqttLog(
+    'anagu/title/revoked',
+    {
+      listingId: listing.id,
+      parcelReference: listing.parcelReference,
+      reason: input?.reason?.trim() || 'Revoked by Administrator',
+      revokedBy: user.fullName,
+    },
+    'ALL',
+  );
+
+  recordAudit(
+    user.id,
+    user.fullName,
+    user.role,
+    'ADMIN_LISTING_REVOKED',
+    'PARCEL',
+    listing.parcelReference,
+    'SUCCESS',
+    `Revoked Access Land parcel ${listing.parcelReference} (${listing.title}): ${
+      input?.reason?.trim() || 'Administrative revocation'
+    }`,
+  );
+
+  return { parcelReference: listing.parcelReference, status: 'REVOKED' };
+}
+
 

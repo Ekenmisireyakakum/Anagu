@@ -99,7 +99,7 @@ export interface SurveyReportRecord {
 }
 
 export type LandListingType = 'STATE_ALLOCATION' | 'VERIFIED_RESALE';
-export type LandListingStatus = 'AVAILABLE' | 'SOLD';
+export type LandListingStatus = 'AVAILABLE' | 'SOLD' | 'REVOKED';
 export type LandZoning = 'Residential' | 'Commercial' | 'Mixed-Use' | 'Agricultural' | 'Industrial';
 
 export interface LandApplicationRecord {

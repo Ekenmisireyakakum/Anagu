@@ -62,6 +62,10 @@ export default function MarketplaceClient({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [buying, setBuying] = useState(false);
+  const [pendingWalletPurchase, setPendingWalletPurchase] = useState<{
+    listingId: string;
+    preferredWallet: 'any' | 'metamask' | 'trustwallet';
+  } | null>(null);
   const [buyerName, setBuyerName] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [latestReceipt, setLatestReceipt] = useState<{
@@ -180,112 +184,164 @@ export default function MarketplaceClient({
   const availableCount = listings.filter((l) => l.status === 'AVAILABLE').length;
   const soldCount = listings.filter((l) => l.status === 'SOLD').length;
 
-  const finalizePurchaseRequest = async (payload: {
-    listingId: string;
-    paymentMethod: 'METAMASK_ETH' | 'TRUST_WALLET_ETH' | 'WEB3_WALLET_ETH' | 'REGISTRY_ESCROW';
-    walletLabel?: string;
-    buyerName?: string;
-    buyerWallet?: string;
-    walletProof?: unknown;
-  }) => {
-    const res = await fetch('/api/marketplace/purchase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.message || 'Land purchase failed');
+  const finalizePurchaseRequest = useCallback(
+    async (payload: {
+      listingId: string;
+      paymentMethod: 'METAMASK_ETH' | 'TRUST_WALLET_ETH' | 'WEB3_WALLET_ETH' | 'REGISTRY_ESCROW';
+      walletLabel?: string;
+      buyerName?: string;
+      buyerWallet?: string;
+      walletProof?: unknown;
+    }) => {
+      const res = await fetch('/api/marketplace/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Land purchase failed');
+      }
+
+      const result = data as {
+        listing: LandListingRecord;
+        purchase: LandPurchaseRecord;
+        title: DigitalLandTitle;
+      };
+
+      setLatestReceipt({ purchase: result.purchase, title: result.title });
+      setFeedback({
+        type: 'ok',
+        text: `Purchase confirmed! Digital Land Title #${result.title.tokenId} (${result.listing.parcelReference}) is now registered to ${result.purchase.buyerName}.`,
+      });
+
+      if (firebase.firebaseUser) {
+        await Promise.allSettled([
+          firebase.syncListing(result.listing),
+          firebase.syncPurchase(result.purchase),
+          ...(firebase.firebaseUser.email === BOOTSTRAPPED_ADMIN_EMAIL
+            ? [firebase.syncTitle(result.title)]
+            : []),
+        ]);
+      }
+
+      await loadData();
+      if (onPurchased) {
+        await onPurchased();
+      }
+    },
+    [firebase, loadData, onPurchased],
+  );
+
+  const executeWalletPurchase = useCallback(
+    async (
+      listing: LandListingRecord,
+      preferredWallet: 'any' | 'metamask' | 'trustwallet',
+    ) => {
+      setBuying(true);
+      try {
+        const targetProvider =
+          preferredWallet === 'any' ? wallet.walletType || 'any' : preferredWallet;
+
+        const walletProof = await wallet.authorizeRegistryAction({
+          kind: 'PURCHASE_LAND',
+          listingId: listing.id,
+          parcelReference: listing.parcelReference,
+          sellerAddress: listing.sellerAddress,
+          priceEth: listing.priceEth,
+          priceNgn: listing.priceNgn,
+          priceUsd: listing.priceUsd,
+          actorRole: user?.role || 'CITIZEN',
+          walletProvider: wallet.walletType === 'browser_signer' ? 'any' : targetProvider,
+          walletName: wallet.walletLabel,
+        });
+
+        const resolvedMethod: 'METAMASK_ETH' | 'TRUST_WALLET_ETH' | 'WEB3_WALLET_ETH' =
+          targetProvider === 'trustwallet'
+            ? 'TRUST_WALLET_ETH'
+            : targetProvider === 'metamask'
+            ? 'METAMASK_ETH'
+            : 'WEB3_WALLET_ETH';
+
+        await finalizePurchaseRequest({
+          listingId: listing.id,
+          paymentMethod: resolvedMethod,
+          walletLabel: walletProof.walletName || wallet.walletLabel,
+          buyerName: buyerName.trim() || user?.fullName || undefined,
+          buyerWallet: walletProof.signerAddress,
+          walletProof,
+        });
+      } catch (err) {
+        setFeedback({
+          type: 'err',
+          text: err instanceof Error ? err.message : 'Unable to complete wallet acquisition',
+        });
+      } finally {
+        setBuying(false);
+      }
+    },
+    [buyerName, finalizePurchaseRequest, user?.fullName, user?.role, wallet],
+  );
+
+  useEffect(() => {
+    if (!pendingWalletPurchase) return;
+    if (wallet.isConnected && wallet.address) {
+      const target =
+        listings.find((l) => l.id === pendingWalletPurchase.listingId) || selectedListing;
+      const preferred = pendingWalletPurchase.preferredWallet;
+      setPendingWalletPurchase(null);
+      if (target) {
+        void executeWalletPurchase(target, preferred);
+      }
+    } else if (!wallet.isModalOpen && !wallet.isConnecting && !wallet.isConnected) {
+      setPendingWalletPurchase(null);
     }
-
-    const result = data as {
-      listing: LandListingRecord;
-      purchase: LandPurchaseRecord;
-      title: DigitalLandTitle;
-    };
-
-    setLatestReceipt({ purchase: result.purchase, title: result.title });
-    setFeedback({
-      type: 'ok',
-      text: `Purchase confirmed! Digital Land Title #${result.title.tokenId} (${result.listing.parcelReference}) is now registered to ${result.purchase.buyerName}.`,
-    });
-
-    if (firebase.firebaseUser) {
-      await Promise.allSettled([
-        firebase.syncListing(result.listing),
-        firebase.syncPurchase(result.purchase),
-        ...(firebase.firebaseUser.email === BOOTSTRAPPED_ADMIN_EMAIL
-          ? [firebase.syncTitle(result.title)]
-          : []),
-      ]);
-    }
-
-    await loadData();
-    if (onPurchased) {
-      await onPurchased();
-    }
-  };
+  }, [
+    executeWalletPurchase,
+    listings,
+    pendingWalletPurchase,
+    selectedListing,
+    wallet.address,
+    wallet.isConnected,
+    wallet.isConnecting,
+    wallet.isModalOpen,
+  ]);
 
   const handleWalletPurchase = async (preferredWallet: 'any' | 'metamask' | 'trustwallet') => {
     if (!selectedListing) return;
     setFeedback(null);
     setLatestReceipt(null);
 
-    if (!wallet.isConnected) {
-      if (preferredWallet === 'any') {
-        wallet.openModal('all');
-        return;
-      }
-      const extRes = await wallet.connectWithExtension(preferredWallet);
+    const needsSpecificSwitch =
+      preferredWallet !== 'any' &&
+      wallet.isConnected &&
+      wallet.walletType !== preferredWallet &&
+      wallet.discoveredWallets.some((w) => w.id === preferredWallet);
+
+    if (!wallet.isConnected || needsSpecificSwitch) {
+      const autoTarget: 'metamask' | 'trustwallet' =
+        preferredWallet === 'any'
+          ? wallet.discoveredWallets.some((w) => w.id === 'trustwallet') &&
+            !wallet.discoveredWallets.some((w) => w.id === 'metamask')
+            ? 'trustwallet'
+            : 'metamask'
+          : preferredWallet;
+
+      const extRes = await wallet.connectWithExtension(autoTarget);
       if (!extRes.address) {
         wallet.clearError();
-        wallet.openModal(preferredWallet);
+        setPendingWalletPurchase({
+          listingId: selectedListing.id,
+          preferredWallet: preferredWallet === 'any' ? autoTarget : preferredWallet,
+        });
+        wallet.openModal(autoTarget);
         return;
       }
+      await executeWalletPurchase(selectedListing, autoTarget);
+      return;
     }
 
-    setBuying(true);
-
-    try {
-      const targetProvider =
-        preferredWallet === 'any' ? wallet.walletType || 'any' : preferredWallet;
-
-      const walletProof = await wallet.authorizeRegistryAction({
-        kind: 'PURCHASE_LAND',
-        listingId: selectedListing.id,
-        parcelReference: selectedListing.parcelReference,
-        sellerAddress: selectedListing.sellerAddress,
-        priceEth: selectedListing.priceEth,
-        priceNgn: selectedListing.priceNgn,
-        priceUsd: selectedListing.priceUsd,
-        actorRole: user?.role || 'CITIZEN',
-        walletProvider: wallet.walletType === 'browser_signer' ? 'any' : targetProvider,
-        walletName: wallet.walletLabel,
-      });
-
-      const resolvedMethod: 'METAMASK_ETH' | 'TRUST_WALLET_ETH' | 'WEB3_WALLET_ETH' =
-        targetProvider === 'trustwallet'
-          ? 'TRUST_WALLET_ETH'
-          : targetProvider === 'metamask'
-          ? 'METAMASK_ETH'
-          : 'WEB3_WALLET_ETH';
-
-      await finalizePurchaseRequest({
-        listingId: selectedListing.id,
-        paymentMethod: resolvedMethod,
-        walletLabel: walletProof.walletName || wallet.walletLabel,
-        buyerName: buyerName.trim() || user?.fullName || undefined,
-        buyerWallet: walletProof.signerAddress,
-        walletProof,
-      });
-    } catch (err) {
-      setFeedback({
-        type: 'err',
-        text: err instanceof Error ? err.message : 'Unable to complete wallet acquisition',
-      });
-    } finally {
-      setBuying(false);
-    }
+    await executeWalletPurchase(selectedListing, preferredWallet);
   };
 
   const handleEscrowPurchase = async () => {
@@ -1009,10 +1065,10 @@ export default function MarketplaceClient({
                             className="w-full py-3 px-4 text-xs sm:text-sm font-semibold text-slate-900 bg-amber-300 border border-amber-400 rounded-md hover:bg-amber-400 disabled:opacity-50 transition-colors"
                           >
                             {buying
-                              ? 'Authorizing Web3 Settlement...'
+                              ? 'Awaiting Wallet Confirmation...'
                               : wallet.isConnected
-                              ? `Buy with ${wallet.walletLabel} · ${selectedListing.priceEth} ETH (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)})`
-                              : `Connect & Buy with Any Web3 Wallet · ${selectedListing.priceEth} ETH`}
+                              ? `Buy Land with ${wallet.walletLabel} · ${selectedListing.priceEth} ETH (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)})`
+                              : `Buy Land (MetaMask / Trust Wallet) · ${selectedListing.priceEth} ETH`}
                           </button>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1022,7 +1078,7 @@ export default function MarketplaceClient({
                               onClick={() => handleWalletPurchase('metamask')}
                               className="py-2.5 px-3 text-xs font-semibold text-slate-900 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 disabled:opacity-50 transition-colors"
                             >
-                              MetaMask · {selectedListing.priceEth} ETH
+                              Trigger MetaMask · {selectedListing.priceEth} ETH
                             </button>
                             <button
                               type="button"
@@ -1030,7 +1086,7 @@ export default function MarketplaceClient({
                               onClick={() => handleWalletPurchase('trustwallet')}
                               className="py-2.5 px-3 text-xs font-semibold text-slate-900 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 disabled:opacity-50 transition-colors"
                             >
-                              Trust Wallet · {selectedListing.priceEth} ETH
+                              Trigger Trust Wallet · {selectedListing.priceEth} ETH
                             </button>
                           </div>
 

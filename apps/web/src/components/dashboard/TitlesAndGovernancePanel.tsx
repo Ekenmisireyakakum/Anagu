@@ -119,7 +119,7 @@ export default function TitlesAndGovernancePanel({
     try {
       const targetTitle = titles.find((t) => t.tokenId === Number(revokeTokenId));
       let walletProof = null;
-      if (user.role === 'GOVERNOR' && wallet.isConnected && signWithMetaMask && targetTitle) {
+      if ((user.role === 'GOVERNOR' || user.role === 'LAND_ADMINISTRATOR') && wallet.isConnected && signWithMetaMask && targetTitle) {
         walletProof = await wallet.authorizeRegistryAction({
           kind: 'REVOKE_TITLE',
           tokenId: Number(revokeTokenId),
@@ -316,7 +316,7 @@ export default function TitlesAndGovernancePanel({
               Section 28 Statutory Revocation (Land Use Act 1978)
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Authorized exclusively for GOVERNOR_ROLE ({user.role === 'GOVERNOR' ? 'Current session authorized' : `Current role ${user.role} will be rejected with 403`}).
+              Authorized for LAND_ADMINISTRATOR &amp; GOVERNOR_ROLE ({user.role === 'GOVERNOR' || user.role === 'LAND_ADMINISTRATOR' ? 'Current session authorized' : `Current role ${user.role} will be rejected with 403`}).
             </p>
           </div>
           <div className="space-y-3">

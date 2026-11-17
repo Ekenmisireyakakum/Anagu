@@ -16,8 +16,23 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get('q');
 
   const rates = await refreshMarketRates(searchParams.get('refreshRates') === '1');
-  const listings = listLandListings({ lga, status, listingType, verificationStatus, q });
   const user = getAuthenticatedUser(request);
+  const includeRevoked =
+    searchParams.get('includeRevoked') === '1' &&
+    Boolean(
+      user &&
+        (user.role === 'LAND_ADMINISTRATOR' ||
+          user.role === 'GOVERNOR' ||
+          user.role === 'REGISTRAR'),
+    );
+  const listings = listLandListings({
+    lga,
+    status,
+    listingType,
+    verificationStatus,
+    q,
+    includeRevoked,
+  });
   const purchases = user ? listUserPurchases(user) : [];
 
   return NextResponse.json({ listings, purchases, rates });
