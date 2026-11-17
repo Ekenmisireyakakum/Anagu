@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BOOTSTRAPPED_ADMIN_EMAIL } from '../../lib/firebase';
 import {
   FALLBACK_MARKET_RATES,
   ethToUsd,
@@ -12,7 +11,6 @@ import {
   usdToNgn,
   type MarketRates,
 } from '../../lib/pricing';
-import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import type {
   DigitalLandTitle,
@@ -47,7 +45,6 @@ export default function MarketplaceClient({
   onPurchased,
 }: MarketplaceClientProps) {
   const wallet = useWallet();
-  const firebase = useFirebase();
 
   const [user, setUser] = useState<SafeUser | null>(null);
   const [listings, setListings] = useState<LandListingRecord[]>([]);
@@ -215,22 +212,12 @@ export default function MarketplaceClient({
         text: `Purchase confirmed! Digital Land Title #${result.title.tokenId} (${result.listing.parcelReference}) is now registered to ${result.purchase.buyerName}.`,
       });
 
-      if (firebase.firebaseUser) {
-        await Promise.allSettled([
-          firebase.syncListing(result.listing),
-          firebase.syncPurchase(result.purchase),
-          ...(firebase.firebaseUser.email === BOOTSTRAPPED_ADMIN_EMAIL
-            ? [firebase.syncTitle(result.title)]
-            : []),
-        ]);
-      }
-
       await loadData();
       if (onPurchased) {
         await onPurchased();
       }
     },
-    [firebase, loadData, onPurchased],
+    [loadData, onPurchased],
   );
 
   const executeWalletPurchase = useCallback(
@@ -387,10 +374,6 @@ export default function MarketplaceClient({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Unable to list land');
-
-      if (firebase.firebaseUser) {
-        await firebase.syncListing(data as LandListingRecord).catch(() => {});
-      }
 
       setFeedback({
         type: 'ok',

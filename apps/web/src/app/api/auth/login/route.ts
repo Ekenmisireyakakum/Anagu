@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   authenticateUser,
   createSessionToken,
+  ensureStoreReady,
+  persistStoreToSupabase,
   recordAudit,
 } from '../../../../lib/anagu-store';
 import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStoreReady();
     const { email, password } = await request.json();
     if (!email || !password) {
       return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
@@ -27,6 +30,7 @@ export async function POST(request: NextRequest) {
       'SUCCESS',
       `Authenticated session started for ${user.email}`,
     );
+    await persistStoreToSupabase();
 
     const response = NextResponse.json({ user, accessToken: token });
     response.cookies.set(SESSION_COOKIE_NAME, token, {

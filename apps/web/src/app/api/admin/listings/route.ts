@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revokeMarketplaceListing } from '../../../../lib/anagu-store';
+import { ensureStoreReady, persistStoreToSupabase, revokeMarketplaceListing } from '../../../../lib/anagu-store';
 import { getAuthenticatedUser } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
+  await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
         reason: body.reason,
         walletProof: body.walletProof || null,
       });
+      await persistStoreToSupabase();
       return NextResponse.json(result);
     }
     return NextResponse.json({ message: 'Unsupported admin listing action' }, { status: 400 });

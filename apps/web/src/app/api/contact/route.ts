@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getAnaguStore } from '../../../lib/anagu-store';
+import { ensureStoreReady, persistStoreToSupabase } from '../../../lib/anagu-store';
 
 export async function POST(request: NextRequest) {
   try {
+    const store = await ensureStoreReady();
     const body = await request.json();
     const { name, email, organization, subject, message } = body ?? {};
     if (!name || !email || !message) {
@@ -21,7 +22,8 @@ export async function POST(request: NextRequest) {
       message: String(message),
       createdAt: new Date().toISOString(),
     };
-    getAnaguStore().contacts.unshift(entry);
+    store.contacts.unshift(entry);
+    await persistStoreToSupabase();
     return NextResponse.json(entry, { status: 201 });
   } catch {
     return NextResponse.json({ message: 'Failed to submit inquiry' }, { status: 400 });

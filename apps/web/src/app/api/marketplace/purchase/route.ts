@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createSessionToken,
+  ensureStoreReady,
+  persistStoreToSupabase,
   purchaseLandListing,
   resolveOrCreateWalletOwner,
 } from '../../../../lib/anagu-store';
@@ -9,6 +11,7 @@ import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../../lib/serve
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStoreReady();
     await refreshMarketRates();
     const body = await request.json();
     if (!body?.listingId) {
@@ -38,6 +41,7 @@ export async function POST(request: NextRequest) {
       walletLabel: typeof body.walletLabel === 'string' ? body.walletLabel : undefined,
       walletProof: body.walletProof ?? null,
     });
+    await persistStoreToSupabase();
 
     const response = NextResponse.json({ ...result, owner }, { status: 200 });
     if (!sessionUser) {

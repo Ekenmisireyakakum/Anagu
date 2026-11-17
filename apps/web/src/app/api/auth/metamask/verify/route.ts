@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createSessionToken,
+  ensureStoreReady,
+  persistStoreToSupabase,
   verifyMetaMaskChallenge,
 } from '../../../../../lib/anagu-store';
 import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStoreReady();
     const body = await request.json();
     const mode = body.mode === 'link' ? 'link' : 'login';
     const currentUser = mode === 'link' ? getAuthenticatedUser(request) : null;
@@ -18,12 +21,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const challengeToken = request.cookies.get('anagu_mm_nonce')?.value;
     const result = verifyMetaMaskChallenge({
       address: String(body.address || ''),
       signature: String(body.signature || ''),
       mode,
       currentUser,
+      challengeToken,
     });
+
+    await persistStoreToSupabase();
 
     const token = createSessionToken(result.user);
     const response = NextResponse.json({
@@ -38,6 +45,12 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: 86400,
+    });
+    response.cookies.set('anagu_mm_nonce', '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
     });
     return response;
   } catch (err) {

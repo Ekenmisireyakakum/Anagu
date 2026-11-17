@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createSessionToken,
-  getAnaguStore,
+  ensureStoreReady,
+  persistStoreToSupabase,
   resolveOrCreateWalletOwner,
   submitLandApplication,
   syncApplicationWithRates,
@@ -10,12 +11,12 @@ import { refreshMarketRates } from '../../../lib/pricing';
 import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
+  const store = await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
   }
   const rates = await refreshMarketRates();
-  const store = getAnaguStore();
   const list =
     user.role === 'CITIZEN'
       ? store.applications.filter((a) => a.applicantId === user.id)
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStoreReady();
     await refreshMarketRates();
     const body = await request.json();
     const sessionUser = getAuthenticatedUser(request);
@@ -37,6 +39,7 @@ export async function POST(request: NextRequest) {
       });
 
     const { application, deduplicated } = submitLandApplication(applicant, body);
+    await persistStoreToSupabase();
     const response = NextResponse.json(
       { application, deduplicated, owner: applicant },
       { status: deduplicated ? 200 : 201 },

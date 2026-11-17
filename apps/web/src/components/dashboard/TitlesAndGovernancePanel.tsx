@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
 
@@ -34,7 +33,6 @@ export default function TitlesAndGovernancePanel({
   onRefresh,
 }: TitlesAndGovernancePanelProps) {
   const wallet = useWallet();
-  const firebase = useFirebase();
   const [transferTokenId, setTransferTokenId] = useState<number>(titles[0]?.tokenId || 1001);
   const [recipientEmail, setRecipientEmail] = useState('surveyor@anagu.gov.ng');
   const [revokeTokenId, setRevokeTokenId] = useState<number>(titles[0]?.tokenId || 1001);
@@ -91,9 +89,6 @@ export default function TitlesAndGovernancePanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Transfer failed');
-      if (firebase.firebaseUser && data?.tokenId) {
-        await firebase.syncTitle(data as DigitalLandTitle).catch(() => {});
-      }
       setFeedback({
         type: 'ok',
         text: `Registry transfer executed: Token #${data.tokenId} transferred to ${data.ownerName} (tx ${data.txHash.slice(
@@ -143,9 +138,6 @@ export default function TitlesAndGovernancePanel({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Revocation failed');
-      if (firebase.firebaseUser && data?.tokenId) {
-        await firebase.syncTitle(data as DigitalLandTitle).catch(() => {});
-      }
       setFeedback({
         type: 'ok',
         text: `Statutory revocation executed on Token #${data.tokenId} (${data.parcelReference}) under "${data.revocationGrounds}". Future transfers are permanently blocked.${

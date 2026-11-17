@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createInMemoryParcel } from '../../../../lib/mock-gis-store';
-import { getAllEffectiveParcels } from '../../../../lib/anagu-store';
+import { ensureStoreReady, getAllEffectiveParcels } from '../../../../lib/anagu-store';
 
 export async function GET(request: NextRequest) {
+  await ensureStoreReady();
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
   const lga = searchParams.get('lga');

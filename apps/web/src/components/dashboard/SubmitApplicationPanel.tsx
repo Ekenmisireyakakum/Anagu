@@ -24,7 +24,6 @@ import {
   usdToNgn,
   type MarketRates,
 } from '../../lib/pricing';
-import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import OsmParcelMap from '../map/OsmParcelMap';
 import type {
@@ -131,7 +130,6 @@ export default function SubmitApplicationPanel({
   onSubmitted,
 }: SubmitApplicationPanelProps) {
   const wallet = useWallet();
-  const firebase = useFirebase();
 
   // Section 1: Parcel Details & Ownership (matching screenshot + extended cadastral info)
   const [parcelTitle, setParcelTitle] = useState('');
@@ -499,9 +497,6 @@ export default function SubmitApplicationPanel({
       }
 
       const createdApp = data.application as LandApplicationRecord;
-      if (firebase.firebaseUser && createdApp?.id) {
-        await firebase.syncApplication(createdApp).catch(() => {});
-      }
 
       setFeedback({
         type: 'ok',
@@ -558,10 +553,7 @@ export default function SubmitApplicationPanel({
         });
         if (res.ok) {
           syncedCount += 1;
-          const data = await res.json();
-          if (firebase.firebaseUser && data?.application?.id) {
-            await firebase.syncApplication(data.application as LandApplicationRecord).catch(() => {});
-          }
+          await res.json();
         } else {
           remaining.push(item);
         }

@@ -3,11 +3,12 @@ import MetaMaskConnectButton from '../components/MetaMaskConnectButton';
 import SiteHeader from '../components/SiteHeader';
 import SiteFooter from '../components/SiteFooter';
 import ParcelImage from '../components/marketplace/ParcelImage';
-import { listLandListings } from '../lib/anagu-store';
+import { ensureStoreReady, listLandListings } from '../lib/anagu-store';
 
 export const dynamic = 'force-dynamic';
 
-export default function HomePage() {
+export default async function HomePage() {
+  await ensureStoreReady();
   const listings = listLandListings();
   const availableListings = listings.filter((l) => l.status === 'AVAILABLE');
   const verifiedAvailableCount = availableListings.filter(

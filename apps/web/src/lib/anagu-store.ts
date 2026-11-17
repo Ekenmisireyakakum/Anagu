@@ -15,6 +15,7 @@ import {
   usdToNgn,
   type MarketRates,
 } from './pricing';
+import { flushSupabaseSync, hydrateStoreFromSupabase, scheduleSupabaseSync } from './supabase';
 
 export type UserRole =
   | 'CITIZEN'
@@ -309,7 +310,11 @@ interface AnaguGlobalStore {
   nextBlockNumber: number;
 }
 
-const SESSION_SECRET = process.env.JWT_SECRET || 'anagu-session-hmac-secret-dev-only';
+const SESSION_SECRET =
+  process.env.JWT_SECRET ||
+  (process.env.SUPABASE_SECRET_KEY
+    ? crypto.createHash('sha256').update(`anagu-session:${process.env.SUPABASE_SECRET_KEY}`).digest('hex')
+    : 'anagu-session-hmac-secret-dev-only');
 
 function sha256(input: string): string {
   return '0x' + crypto.createHash('sha256').update(input).digest('hex');
@@ -936,8 +941,23 @@ const g = globalThis as typeof globalThis & { __anaguStore?: AnaguGlobalStore };
 export function getAnaguStore(): AnaguGlobalStore {
   if (!g.__anaguStore) {
     g.__anaguStore = initStore();
+    void hydrateStoreFromSupabase(g.__anaguStore);
   }
   return g.__anaguStore;
+}
+
+export async function ensureStoreReady(options?: { force?: boolean }): Promise<AnaguGlobalStore> {
+  const store = getAnaguStore();
+  await hydrateStoreFromSupabase(store, options);
+  return store;
+}
+
+export function syncStoreToSupabase(): void {
+  scheduleSupabaseSync(getAnaguStore());
+}
+
+export async function persistStoreToSupabase(): Promise<void> {
+  await flushSupabaseSync(getAnaguStore());
 }
 
 export function toSafeUser(user: UserAccount): SafeUser {
@@ -1023,11 +1043,35 @@ export function registerCitizenUser(input: {
   return toSafeUser(newUser);
 }
 
+function signChallengeRecord(record: AuthNonceRecord): string {
+  const payload = Buffer.from(JSON.stringify(record), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifySignedChallengeRecord(token: string, expectedAddress: string): AuthNonceRecord | null {
+  try {
+    const [payload, sig] = token.split('.');
+    if (!payload || !sig) return null;
+    const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+    if (sig.length !== expectedSig.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as AuthNonceRecord;
+    if (!parsed || !parsed.address || !parsed.message || !parsed.expiresAt) return null;
+    if (parsed.expiresAt < Date.now()) return null;
+    if (ethers.getAddress(parsed.address) !== expectedAddress) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function issueMetaMaskChallenge(rawAddress: string): {
   address: string;
   nonce: string;
   message: string;
   expiresAt: string;
+  challengeToken: string;
 } {
   if (!rawAddress || !ethers.isAddress(rawAddress)) {
     throw new Error('Valid EVM wallet address is required');
@@ -1049,18 +1093,20 @@ export function issueMetaMaskChallenge(rawAddress: string): {
     'Network: Hyperledger Besu QBFT (Chain ID 1337)',
   ].join('\n');
 
-  store.authNonces.set(address.toLowerCase(), {
+  const record: AuthNonceRecord = {
     nonce,
     address,
     message,
     expiresAt: expiresAtMs,
-  });
+  };
+  store.authNonces.set(address.toLowerCase(), record);
 
   return {
     address,
     nonce,
     message,
     expiresAt: new Date(expiresAtMs).toISOString(),
+    challengeToken: signChallengeRecord(record),
   };
 }
 
@@ -1069,6 +1115,7 @@ export function verifyMetaMaskChallenge(input: {
   signature: string;
   mode: 'login' | 'link';
   currentUser?: SafeUser | null;
+  challengeToken?: string;
 }): { user: SafeUser; linked: boolean; isNewAccount?: boolean } {
   if (!input.address || !ethers.isAddress(input.address)) {
     throw new Error('Valid EVM wallet address is required');
@@ -1082,7 +1129,14 @@ export function verifyMetaMaskChallenge(input: {
   }
 
   const normalizedAddress = ethers.getAddress(input.address);
-  const record = store.authNonces.get(normalizedAddress.toLowerCase());
+  const memRecord = store.authNonces.get(normalizedAddress.toLowerCase());
+  const record =
+    memRecord && memRecord.expiresAt >= Date.now()
+      ? memRecord
+      : input.challengeToken
+      ? verifySignedChallengeRecord(input.challengeToken, normalizedAddress)
+      : null;
+
   if (!record || record.expiresAt < Date.now()) {
     throw new Error('MetaMask verification challenge expired or not found. Please retry.');
   }
@@ -1299,6 +1353,7 @@ export function publishMqttLog(
     delivered: true,
   };
   store.mqttLogs.unshift(entry);
+  scheduleSupabaseSync(store);
   return entry;
 }
 
@@ -1326,6 +1381,7 @@ export function recordAudit(
     details,
   };
   store.auditLogs.unshift(entry);
+  scheduleSupabaseSync(store);
   return entry;
 }
 

@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
-import { useFirebase } from '../../components/FirebaseContext';
 import { useWallet } from '../../components/WalletContext';
 import ApplicationsPanel from '../../components/dashboard/ApplicationsPanel';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
@@ -24,7 +23,6 @@ type DashboardTab = 'workflow' | 'submit' | 'marketplace' | 'titles' | 'mqtt' | 
 export default function DashboardPage() {
   const router = useRouter();
   const wallet = useWallet();
-  const firebase = useFirebase();
   const [user, setUser] = useState<SafeUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('workflow');
@@ -105,24 +103,8 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    if (firebase.firebaseUser) {
-      await firebase.signOutFirebase().catch(() => {});
-    }
     router.push('/login');
     router.refresh();
-  };
-
-  const handleConnectFirebase = async () => {
-    setWalletNotice(null);
-    const fbUser = await firebase.signInWithGoogle(user?.walletAddress || wallet.address);
-    if (fbUser) {
-      setWalletNotice({
-        ok: true,
-        text: `Connected to Cloud Firestore as ${fbUser.email}. Registry mutations will now sync to Firestore.`,
-      });
-    } else if (firebase.authError) {
-      setWalletNotice({ ok: false, text: firebase.authError });
-    }
   };
 
   const completeWalletLink = useCallback(
@@ -158,9 +140,6 @@ export default function DashboardPage() {
         }
 
         setUser(verified.user as SafeUser);
-        if (firebase.firebaseUser) {
-          await firebase.syncWalletProfile(connectedAddress, true).catch(() => {});
-        }
         setWalletNotice({
           ok: true,
           text: `Web3 wallet ${connectedAddress} cryptographically linked to ${verified.user.email} (${verified.user.role}).`,
@@ -175,7 +154,7 @@ export default function DashboardPage() {
         setLinkingWallet(false);
       }
     },
-    [firebase, loadWorkspaceData, user, wallet],
+    [loadWorkspaceData, user, wallet],
   );
 
   useEffect(() => {
@@ -338,23 +317,6 @@ export default function DashboardPage() {
                   QR / Options
                 </button>
               </div>
-            )}
-
-            {firebase.firebaseUser ? (
-              <span
-                title={`Firestore Docs: ${firebase.firestoreCounts.applications} apps, ${firebase.firestoreCounts.titles} titles`}
-                className="px-2.5 py-1 font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 rounded"
-              >
-                Firestore Sync: {firebase.firebaseUser.email}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleConnectFirebase}
-                className="px-3 py-1.5 font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50"
-              >
-                Connect Firestore
-              </button>
             )}
 
             <Link

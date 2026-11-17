@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
-import { useFirebase } from '../../components/FirebaseContext';
 import { useWallet } from '../../components/WalletContext';
 
 const ROLE_ACCOUNTS = [
@@ -59,14 +58,19 @@ function sanitizeNextPath(raw: string | null): string {
 export default function LoginPage() {
   const router = useRouter();
   const wallet = useWallet();
-  const firebase = useFirebase();
   const [nextPath, setNextPath] = useState('/dashboard');
   const [email, setEmail] = useState('citizen@anagu.gov.ng');
   const [password, setPassword] = useState('Citizen123!');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [mmLoading, setMmLoading] = useState(false);
-  const [fbLoading, setFbLoading] = useState(false);
+  const [sbLoading, setSbLoading] = useState(false);
+  const [sbMode, setSbMode] = useState<'signin' | 'signup'>('signin');
+  const [sbEmail, setSbEmail] = useState('');
+  const [sbPassword, setSbPassword] = useState('');
+  const [sbFullName, setSbFullName] = useState('');
+  const [showSupabaseForm, setShowSupabaseForm] = useState(false);
   const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
 
   useEffect(() => {
@@ -154,36 +158,38 @@ export default function LoginPage() {
     await completeWalletChallengeLogin(connectedAddress);
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleSupabaseAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-    firebase.clearAuthError();
-    setFbLoading(true);
+    setNotice(null);
+    setSbLoading(true);
     try {
-      const fbUser = await firebase.signInWithGoogle(wallet.address);
-      if (!fbUser) {
-        throw new Error(firebase.authError || 'Google sign-in was cancelled');
-      }
-      const res = await fetch('/api/auth/firebase', {
+      const res = await fetch('/api/auth/supabase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          uid: fbUser.uid,
-          email: fbUser.email,
-          displayName: fbUser.displayName,
-          emailVerified: fbUser.emailVerified,
+          mode: sbMode,
+          email: sbEmail,
+          password: sbPassword,
+          fullName: sbFullName,
           walletAddress: wallet.address,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || 'Unable to start ANAGU Firebase session');
+        throw new Error(data.message || 'Unable to authenticate with Supabase');
+      }
+      if (data.confirmationRequired) {
+        setNotice(data.message);
+        setSbMode('signin');
+        return;
       }
       router.push(nextPath);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in with Google');
+      setError(err instanceof Error ? err.message : 'Unable to sign in with Supabase');
     } finally {
-      setFbLoading(false);
+      setSbLoading(false);
     }
   };
 
@@ -209,11 +215,17 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* MetaMask & Firebase Authentication */}
+          {notice && (
+            <div className="mt-4 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-sm text-emerald-900">
+              {notice}
+            </div>
+          )}
+
+          {/* MetaMask & Supabase Authentication */}
           <div className="mt-5 p-4 rounded-md bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-semibold text-slate-800">
-                Web3 & Cloud Auth
+                Web3 &amp; Supabase Auth
               </span>
               <button
                 type="button"
@@ -241,14 +253,81 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              disabled={fbLoading}
-              onClick={handleGoogleSignIn}
-              className="w-full py-2.5 px-4 text-sm font-semibold text-slate-900 bg-white border border-slate-300 rounded-md hover:bg-slate-100 disabled:opacity-50 transition-colors"
+              onClick={() => setShowSupabaseForm((v) => !v)}
+              className="w-full py-2.5 px-4 text-sm font-semibold text-slate-900 bg-white border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
             >
-              {fbLoading ? 'Connecting Firebase...' : 'Continue with Google (Firebase Firestore)'}
+              {showSupabaseForm ? 'Hide Supabase Account Auth' : 'Continue with Supabase Auth'}
             </button>
+
+            {showSupabaseForm && (
+              <form onSubmit={handleSupabaseAuth} className="pt-2 border-t border-slate-200 space-y-2.5">
+                <div className="flex gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSbMode('signin')}
+                    className={`flex-1 py-1.5 rounded font-semibold border ${
+                      sbMode === 'signin'
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSbMode('signup')}
+                    className={`flex-1 py-1.5 rounded font-semibold border ${
+                      sbMode === 'signup'
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    Create Account
+                  </button>
+                </div>
+                {sbMode === 'signup' && (
+                  <input
+                    type="text"
+                    required
+                    value={sbFullName}
+                    onChange={(e) => setSbFullName(e.target.value)}
+                    placeholder="Full Name"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                  />
+                )}
+                <input
+                  type="email"
+                  required
+                  value={sbEmail}
+                  onChange={(e) => setSbEmail(e.target.value)}
+                  placeholder="Supabase Email"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={sbPassword}
+                  onChange={(e) => setSbPassword(e.target.value)}
+                  placeholder="Password (min 6 chars)"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+                <button
+                  type="submit"
+                  disabled={sbLoading}
+                  className="w-full py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {sbLoading
+                    ? 'Authenticating with Supabase...'
+                    : sbMode === 'signup'
+                    ? 'Sign Up with Supabase'
+                    : 'Sign In with Supabase'}
+                </button>
+              </form>
+            )}
+
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              MetaMask signs an EIP-191 <span className="font-mono">personal_sign</span> challenge; Google Sign-In enables persistent Cloud Firestore sync.
+              MetaMask signs an EIP-191 <span className="font-mono">personal_sign</span> challenge; Supabase Auth verifies sessions against your Supabase project.
             </p>
           </div>
 

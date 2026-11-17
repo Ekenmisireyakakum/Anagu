@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transferTitleOwnership } from '../../../../lib/anagu-store';
+import { ensureStoreReady, persistStoreToSupabase, transferTitleOwnership } from '../../../../lib/anagu-store';
 import { getAuthenticatedUser } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
+  await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
       Boolean(body.bypassAttempt),
       body.walletProof || null,
     );
+    await persistStoreToSupabase();
     return NextResponse.json(title);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Transfer failed';

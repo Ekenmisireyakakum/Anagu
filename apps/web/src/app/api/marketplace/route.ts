@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createLandListing,
+  ensureStoreReady,
   listLandListings,
   listUserPurchases,
+  persistStoreToSupabase,
 } from '../../../lib/anagu-store';
 import { refreshMarketRates } from '../../../lib/pricing';
 import { getAuthenticatedUser } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
+  await ensureStoreReady();
   const { searchParams } = new URL(request.url);
   const lga = searchParams.get('lga');
   const status = searchParams.get('status');
@@ -39,6 +42,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
@@ -56,6 +60,7 @@ export async function POST(request: NextRequest) {
       zoning: body.zoning,
       description: body.description ? String(body.description) : undefined,
     });
+    await persistStoreToSupabase();
     return NextResponse.json(listing, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unable to create land listing';

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
-import { useFirebase } from '../FirebaseContext';
 import { useWallet } from '../WalletContext';
 import type { LandApplicationRecord, SafeUser } from './types';
 
@@ -30,7 +29,6 @@ export default function ApplicationsPanel({
   onRefresh,
 }: ApplicationsPanelProps) {
   const wallet = useWallet();
-  const firebase = useFirebase();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedId, setSelectedId] = useState<string>(applications[0]?.id || '');
@@ -113,9 +111,6 @@ export default function ApplicationsPanel({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || `Action ${action} failed`);
-      }
-      if (firebase.firebaseUser && data?.id) {
-        await firebase.syncApplication(data as LandApplicationRecord).catch(() => {});
       }
       setActionNotes('');
       setFeedback({

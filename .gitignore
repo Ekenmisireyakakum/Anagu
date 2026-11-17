@@ -13,7 +13,14 @@ node_modules/
 dist/
 build/
 .next/
+.next-dev/
+**/.next/
+**/.next-dev/
 out/
+
+# Vercel
+.vercel/
+**/.vercel/
 
 # Test coverage
 coverage/

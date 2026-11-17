@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revokeLandTitle } from '../../../../lib/anagu-store';
+import { ensureStoreReady, persistStoreToSupabase, revokeLandTitle } from '../../../../lib/anagu-store';
 import { getAuthenticatedUser } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
+  await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
       justification: String(body.justification || ''),
       walletProof: body.walletProof || null,
     });
+    await persistStoreToSupabase();
     return NextResponse.json(title);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Revocation failed';

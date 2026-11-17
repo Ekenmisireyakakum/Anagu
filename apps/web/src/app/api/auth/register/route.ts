@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, registerCitizenUser } from '../../../../lib/anagu-store';
+import {
+  createSessionToken,
+  ensureStoreReady,
+  persistStoreToSupabase,
+  registerCitizenUser,
+} from '../../../../lib/anagu-store';
 import { SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStoreReady();
     const { email, password, fullName, phone, walletAddress } = await request.json();
     if (!email || !password || !fullName) {
       return NextResponse.json(
@@ -18,6 +24,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const user = registerCitizenUser({ email, password, fullName, phone, walletAddress });
+    await persistStoreToSupabase();
     const token = createSessionToken(user);
     const response = NextResponse.json({ user, accessToken: token }, { status: 201 });
     response.cookies.set(SESSION_COOKIE_NAME, token, {

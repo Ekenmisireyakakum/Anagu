@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getAnaguStore,
+  ensureStoreReady,
+  persistStoreToSupabase,
   recordAudit,
   toSafeUser,
   type UserRole,
@@ -8,11 +9,11 @@ import {
 import { getAuthenticatedUser } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
+  const store = await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
   }
-  const store = getAnaguStore();
   // Registrars and Admins can view user directory for transfer / governance lookup
   if (user.role === 'LAND_ADMINISTRATOR' || user.role === 'REGISTRAR') {
     return NextResponse.json(store.users.map(toSafeUser));
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const store = await ensureStoreReady();
   const user = getAuthenticatedUser(request);
   if (!user) {
     return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
@@ -45,7 +47,6 @@ export async function PATCH(request: NextRequest) {
     );
   }
   const body = await request.json();
-  const store = getAnaguStore();
   const target = store.users.find((u) => u.id === body.userId);
   if (!target) {
     return NextResponse.json({ message: 'User not found' }, { status: 404 });
@@ -66,5 +67,6 @@ export async function PATCH(request: NextRequest) {
     'SUCCESS',
     `Updated ${target.email}: role=${target.role}, active=${target.isActive}`,
   );
+  await persistStoreToSupabase();
   return NextResponse.json(toSafeUser(target));
 }

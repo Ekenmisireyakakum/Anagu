@@ -3,10 +3,8 @@
 import { useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
-import { useFirebase } from '../../components/FirebaseContext';
 
 export default function ContactPage() {
-  const firebase = useFirebase();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [organization, setOrganization] = useState('');
@@ -27,17 +25,6 @@ export default function ContactPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Submission failed');
-      if (firebase.firebaseUser && data?.id) {
-        await firebase
-          .syncContact({
-            id: String(data.id),
-            name,
-            organization: organization || 'Public Inquiry',
-            subject,
-            message,
-          })
-          .catch(() => {});
-      }
       setStatusMsg({
         ok: true,
         text: `Inquiry logged (Reference: ${data.id.slice(0, 8)}). The Lagos Pilot Registry Desk will follow up via email.`,
