@@ -19,12 +19,9 @@ import {
   wktCentroid,
   wktToLatLngs,
 } from '../../lib/gis-utils';
+import { initSafeLeaflet, isLeafletMapReady } from '../../lib/leaflet-safe';
 
-L.Icon.Default.mergeOptions({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+initSafeLeaflet();
 
 interface ExistingParcelFeature {
   id: string;
@@ -62,18 +59,25 @@ function MapViewportController({
   const map = useMap();
 
   useEffect(() => {
-    if (positions.length >= 3) {
+    if (positions.length >= 3 && isLeafletMapReady(map)) {
       const bounds = L.latLngBounds(positions);
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [36, 36], maxZoom: 17, animate: true });
+        map.stop();
+        map.fitBounds(bounds, { padding: [36, 36], maxZoom: 17, animate: false });
       }
     }
   }, [map, positions]);
 
   useEffect(() => {
-    if (flyTarget) {
+    if (flyTarget && isLeafletMapReady(map)) {
+      map.stop();
       map.flyTo([flyTarget.lat, flyTarget.lon], 16, { duration: 0.6 });
     }
+    return () => {
+      if (isLeafletMapReady(map)) {
+        map.stop();
+      }
+    };
   }, [map, flyTarget]);
 
   return null;

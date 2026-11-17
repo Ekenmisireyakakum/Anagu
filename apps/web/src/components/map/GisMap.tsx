@@ -8,13 +8,10 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { MapContainer, TileLayer, GeoJSON, Popup, useMap } from 'react-leaflet';
 import { gisApi } from '../../lib/api';
 import { getOpenStreetMapUrl, polygonToWKT } from '../../lib/gis-utils';
+import { initSafeLeaflet, isLeafletMapReady } from '../../lib/leaflet-safe';
 import ParcelInfoPanel from './ParcelInfoPanel';
 
-L.Icon.Default.mergeOptions({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+initSafeLeaflet();
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
@@ -73,9 +70,15 @@ function MapInner({
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    if (flyTarget) {
+    if (flyTarget && isLeafletMapReady(map)) {
+      map.stop();
       map.flyTo([flyTarget.lat, flyTarget.lon], flyTarget.zoom, { duration: 0.7 });
     }
+    return () => {
+      if (isLeafletMapReady(map)) {
+        map.stop();
+      }
+    };
   }, [flyTarget, map]);
 
   useEffect(() => {
@@ -116,7 +119,7 @@ function MapInner({
     }
 
     import('leaflet-draw').then(() => {
-      if (!mounted) return;
+      if (!mounted || !isLeafletMapReady(map)) return;
       drawnItems = new L.FeatureGroup();
       map.addLayer(drawnItems);
 
@@ -143,10 +146,10 @@ function MapInner({
       if (drawEventCreated) {
         map.off(drawEventCreated, onCreated as unknown as L.LeafletEventHandlerFn);
       }
-      if (drawControl) {
+      if (drawControl && isLeafletMapReady(map)) {
         map.removeControl(drawControl);
       }
-      if (drawnItems) {
+      if (drawnItems && isLeafletMapReady(map)) {
         map.removeLayer(drawnItems);
       }
     };
