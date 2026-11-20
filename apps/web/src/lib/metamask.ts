@@ -44,9 +44,28 @@ export interface DiscoveredWallet {
 export const BESU_CHAIN_ID = Number(process.env.NEXT_PUBLIC_BESU_CHAIN_ID || 1337);
 export const BESU_CHAIN_HEX = `0x${BESU_CHAIN_ID.toString(16)}`;
 export const BESU_RPC_URL = process.env.NEXT_PUBLIC_BESU_RPC_URL || 'http://127.0.0.1:8545';
+
+export const POLYGON_MAINNET_CHAIN_ID = 137;
+export const POLYGON_AMOY_CHAIN_ID = 80002;
+export const POLYGON_CHAIN_ID = Number(
+  process.env.NEXT_PUBLIC_POLYGON_CHAIN_ID || POLYGON_AMOY_CHAIN_ID,
+);
+export const POLYGON_RPC_URL =
+  process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://rpc-amoy.polygon.technology/';
+
+export const ERC20_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_ERC20_TOKEN_ADDRESS || '';
 export const LAND_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_LAND_REGISTRY_ADDRESS || '';
 export const LAND_TITLE_NFT_ADDRESS = process.env.NEXT_PUBLIC_LAND_TITLE_NFT_ADDRESS || '';
 export const VALIDATOR_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_VALIDATOR_REGISTRY_ADDRESS || '';
+
+export const ERC20_ABI = [
+  'function name() external view returns (string)',
+  'function symbol() external view returns (string)',
+  'function decimals() external view returns (uint8)',
+  'function balanceOf(address owner) external view returns (uint256)',
+  'function transfer(address to, uint256 value) external returns (bool)',
+  'function approve(address spender, uint256 value) external returns (bool)',
+];
 
 export const LAND_REGISTRY_ABI = [
   'function registerLand(address owner, string parcelReference, bytes32 spatialHash, bytes32 ownerReference, bytes32 documentHash, string tokenUri) external',
@@ -233,10 +252,11 @@ export function isRunningInIframe(): boolean {
 
 export function getChainDisplayName(chainId: number | null): string {
   if (chainId === null) return 'Not Connected';
+  if (chainId === POLYGON_MAINNET_CHAIN_ID) return 'Polygon Mainnet (137)';
+  if (chainId === POLYGON_AMOY_CHAIN_ID) return 'Polygon Amoy Testnet (80002)';
   if (chainId === BESU_CHAIN_ID) return `ANAGU Besu QBFT (${chainId})`;
   if (chainId === 1) return 'Ethereum Mainnet (1)';
   if (chainId === 11155111) return 'Sepolia Testnet (11155111)';
-  if (chainId === 137) return 'Polygon (137)';
   if (chainId === 8453) return 'Base (8453)';
   if (chainId === 42161) return 'Arbitrum One (42161)';
   if (chainId === 31337) return 'Hardhat Local (31337)';
@@ -610,23 +630,63 @@ export async function switchEvmChain(
     return targetChainId;
   } catch (err) {
     const code = (err as { code?: number })?.code;
-    if (code === 4902 && targetChainId === BESU_CHAIN_ID) {
-      await provider.request({
-        method: 'wallet_addEthereumChain',
-        params: [
-          {
-            chainId: BESU_CHAIN_HEX,
-            chainName: 'ANAGU Besu QBFT',
-            rpcUrls: [BESU_RPC_URL],
-            nativeCurrency: {
-              name: 'ANAGU Ether',
-              symbol: 'ETH',
-              decimals: 18,
+    if (code === 4902) {
+      if (targetChainId === POLYGON_MAINNET_CHAIN_ID) {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: '0x89',
+              chainName: 'Polygon Mainnet',
+              rpcUrls: ['https://polygon-rpc.com/'],
+              blockExplorerUrls: ['https://polygonscan.com/'],
+              nativeCurrency: {
+                name: 'POL',
+                symbol: 'POL',
+                decimals: 18,
+              },
             },
-          },
-        ],
-      });
-      return BESU_CHAIN_ID;
+          ],
+        });
+        return POLYGON_MAINNET_CHAIN_ID;
+      }
+      if (targetChainId === POLYGON_AMOY_CHAIN_ID) {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: '0x13882',
+              chainName: 'Polygon Amoy Testnet',
+              rpcUrls: ['https://rpc-amoy.polygon.technology/'],
+              blockExplorerUrls: ['https://amoy.polygonscan.com/'],
+              nativeCurrency: {
+                name: 'POL',
+                symbol: 'POL',
+                decimals: 18,
+              },
+            },
+          ],
+        });
+        return POLYGON_AMOY_CHAIN_ID;
+      }
+      if (targetChainId === BESU_CHAIN_ID) {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: BESU_CHAIN_HEX,
+              chainName: 'ANAGU Besu QBFT',
+              rpcUrls: [BESU_RPC_URL],
+              nativeCurrency: {
+                name: 'ANAGU Ether',
+                symbol: 'ETH',
+                decimals: 18,
+              },
+            },
+          ],
+        });
+        return BESU_CHAIN_ID;
+      }
     }
     throw err;
   }
@@ -697,8 +757,35 @@ export async function authorizeLandRegistryAction(
   const checksumSigner = ethers.getAddress(address);
   let onChainTxHash: string | undefined;
 
+  const isPolygonOrBesuChain =
+    chainId === POLYGON_MAINNET_CHAIN_ID ||
+    chainId === POLYGON_AMOY_CHAIN_ID ||
+    chainId === BESU_CHAIN_ID;
+
   if (params.kind === 'PURCHASE_LAND') {
-    if (chainId === BESU_CHAIN_ID && ethers.isAddress(params.sellerAddress)) {
+    if (
+      isPolygonOrBesuChain &&
+      ERC20_TOKEN_ADDRESS &&
+      ethers.isAddress(ERC20_TOKEN_ADDRESS) &&
+      ethers.isAddress(params.sellerAddress)
+    ) {
+      const erc20Iface = new ethers.Interface(ERC20_ABI);
+      const tokenAmount = ethers.parseEther(params.priceEth || '1');
+      const data = erc20Iface.encodeFunctionData('transfer', [
+        ethers.getAddress(params.sellerAddress),
+        tokenAmount,
+      ]);
+      onChainTxHash = (await provider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: checksumSigner,
+            to: ethers.getAddress(ERC20_TOKEN_ADDRESS),
+            data,
+          },
+        ],
+      })) as string;
+    } else if (chainId === BESU_CHAIN_ID && ethers.isAddress(params.sellerAddress)) {
       const weiHex = ethers.toBeHex(ethers.parseEther(params.priceEth || '0.01'));
       onChainTxHash = (await provider.request({
         method: 'eth_sendTransaction',
@@ -714,7 +801,7 @@ export async function authorizeLandRegistryAction(
   } else if (
     LAND_REGISTRY_ADDRESS &&
     ethers.isAddress(LAND_REGISTRY_ADDRESS) &&
-    chainId === BESU_CHAIN_ID
+    isPolygonOrBesuChain
   ) {
     const iface = new ethers.Interface(LAND_REGISTRY_ABI);
     let data = '0x';

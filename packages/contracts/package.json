@@ -6,7 +6,9 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy.ts --network besu_local",
-    "deploy:test": "hardhat run scripts/deploy.ts --network besu_test"
+    "deploy:test": "hardhat run scripts/deploy.ts --network besu_test",
+    "deploy:polygon-amoy": "hardhat run scripts/deploy.ts --network polygon_amoy",
+    "deploy:polygon": "hardhat run scripts/deploy.ts --network polygon"
   },
   "devDependencies": {
     "@ethereumjs/util": "^9.1.0",

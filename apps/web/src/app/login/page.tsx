@@ -7,69 +7,24 @@ import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
 import { useWallet } from '../../components/WalletContext';
 
-const ROLE_ACCOUNTS = [
-  {
-    role: 'CITIZEN',
-    label: 'Citizen / Land Applicant',
-    email: 'citizen@anagu.gov.ng',
-    password: 'Citizen123!',
-    wallet: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-    scope: 'Buy verified land parcels, submit registration applications, and manage digital titles',
-  },
-  {
-    role: 'SURVEYOR',
-    label: 'Licensed Surveyor',
-    email: 'surveyor@anagu.gov.ng',
-    password: 'Surveyor123!',
-    wallet: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-    scope: 'Verify WGS 84 parcel geometry, detect 0.5m overlaps, file survey reports',
-  },
-  {
-    role: 'REGISTRAR',
-    label: 'Land Registrar',
-    email: 'registrar@anagu.gov.ng',
-    password: 'Registrar123!',
-    wallet: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
-    scope: 'Review oracle checks, legal sign-off, mint ERC-721 titles, execute transfers',
-  },
-  {
-    role: 'LAND_ADMINISTRATOR',
-    label: 'Land Administrator',
-    email: 'admin@anagu.gov.ng',
-    password: 'Admin1234!',
-    wallet: '0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65',
-    scope: 'Manage users & RBAC roles, inspect audit trail, monitor Besu ledger & MQTT',
-  },
-  {
-    role: 'GOVERNOR',
-    label: 'Executive Governor',
-    email: 'governor@anagu.gov.ng',
-    password: 'Governor123!',
-    wallet: '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc',
-    scope: 'Execute statutory title revocation under Land Use Act 1978 Section 28',
-  },
-];
-
 function sanitizeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard';
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/register-land';
   return raw;
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const wallet = useWallet();
-  const [nextPath, setNextPath] = useState('/dashboard');
-  const [email, setEmail] = useState('citizen@anagu.gov.ng');
-  const [password, setPassword] = useState('Citizen123!');
+  const [nextPath, setNextPath] = useState('/register-land');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [mmLoading, setMmLoading] = useState(false);
   const [sbLoading, setSbLoading] = useState(false);
-  const [sbMode, setSbMode] = useState<'signin' | 'signup'>('signin');
   const [sbEmail, setSbEmail] = useState('');
   const [sbPassword, setSbPassword] = useState('');
-  const [sbFullName, setSbFullName] = useState('');
   const [showSupabaseForm, setShowSupabaseForm] = useState(false);
   const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
 
@@ -141,13 +96,24 @@ export default function LoginPage() {
     if (pendingWalletSignIn && wallet.isConnected && wallet.address) {
       setPendingWalletSignIn(false);
       void completeWalletChallengeLogin(wallet.address);
-    } else if (pendingWalletSignIn && !wallet.isModalOpen && !wallet.isConnecting && !wallet.isConnected) {
+    } else if (
+      pendingWalletSignIn &&
+      !wallet.isModalOpen &&
+      !wallet.isConnecting &&
+      !wallet.isConnected
+    ) {
       setPendingWalletSignIn(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingWalletSignIn, wallet.isConnected, wallet.address, wallet.isModalOpen, wallet.isConnecting]);
+  }, [
+    pendingWalletSignIn,
+    wallet.isConnected,
+    wallet.address,
+    wallet.isModalOpen,
+    wallet.isConnecting,
+  ]);
 
-  const handleMetaMaskSignIn = async () => {
+  const handleWalletSignIn = async () => {
     setError(null);
     wallet.clearError();
     const connectedAddress = wallet.address || (await wallet.connect());
@@ -168,21 +134,15 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: sbMode,
+          mode: 'signin',
           email: sbEmail,
           password: sbPassword,
-          fullName: sbFullName,
           walletAddress: wallet.address,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Unable to authenticate with Supabase');
-      }
-      if (data.confirmationRequired) {
-        setNotice(data.message);
-        setSbMode('signin');
-        return;
       }
       router.push(nextPath);
       router.refresh();
@@ -195,106 +155,75 @@ export default function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    performLogin(email, password);
+    void performLogin(email, password);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <SiteHeader />
 
-      <main className="flex-1 max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg p-6">
-          <h1 className="text-2xl font-bold text-slate-900">Sign In to ANAGU</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Access the land marketplace, register new parcels, or open your registry workspace.
-          </p>
+      <main className="flex-1 max-w-lg w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-8 shadow-sm space-y-5">
+          <div>
+            <p className="text-xs font-mono font-semibold text-emerald-700">
+              ANAGU GIS Land Registry
+            </p>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900">Sign In</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Sign in with your Web3 wallet or account credentials to manage mapped lands and Polygon ERC-721 titles.
+            </p>
+          </div>
 
           {(error || wallet.error) && (
-            <div className="mt-4 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs sm:text-sm text-red-800">
               {error || wallet.error}
             </div>
           )}
 
           {notice && (
-            <div className="mt-4 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-sm text-emerald-900">
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-emerald-900">
               {notice}
             </div>
           )}
 
-          {/* MetaMask & Supabase Authentication */}
-          <div className="mt-5 p-4 rounded-md bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between gap-2">
+          {/* Wallet Quick Sign In */}
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-slate-800">
-                Web3 &amp; Supabase Auth
+                Quick Web3 Wallet Sign In
               </span>
               <button
                 type="button"
-                onClick={() => wallet.openModal()}
+                onClick={() => wallet.openModal('all')}
                 className="text-[11px] font-mono text-emerald-700 hover:underline"
               >
                 {wallet.isConnected
-                  ? `${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)} · Options`
-                  : wallet.isMetaMaskAvailable
-                  ? 'MetaMask Detected · Options'
-                  : 'QR / Standalone Tab Options'}
+                  ? `${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)} · ${wallet.chainName}`
+                  : 'Wallet Options / QR'}
               </button>
             </div>
             <button
               type="button"
               disabled={mmLoading || wallet.isConnecting}
-              onClick={handleMetaMaskSignIn}
-              className="w-full py-2.5 px-4 text-sm font-semibold text-slate-900 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 disabled:opacity-50 transition-colors"
+              onClick={handleWalletSignIn}
+              className="w-full py-2.5 px-4 text-sm font-semibold text-slate-900 bg-amber-200 border border-amber-300 rounded-lg hover:bg-amber-300 disabled:opacity-50 transition-colors"
             >
               {mmLoading || wallet.isConnecting
-                ? 'Awaiting MetaMask Signature...'
+                ? 'Awaiting Wallet Signature...'
                 : wallet.isConnected
-                ? `Sign In with MetaMask (${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)})`
-                : 'Connect & Sign In with MetaMask'}
+                ? `Sign In with ${wallet.walletLabel} (${wallet.address?.slice(0, 6)}...${wallet.address?.slice(-4)})`
+                : 'Connect & Sign In with Wallet'}
             </button>
             <button
               type="button"
               onClick={() => setShowSupabaseForm((v) => !v)}
-              className="w-full py-2.5 px-4 text-sm font-semibold text-slate-900 bg-white border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
+              className="w-full py-2 px-3 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              {showSupabaseForm ? 'Hide Supabase Account Auth' : 'Continue with Supabase Auth'}
+              {showSupabaseForm ? 'Hide Supabase Auth' : 'Sign In with Supabase Auth'}
             </button>
 
             {showSupabaseForm && (
               <form onSubmit={handleSupabaseAuth} className="pt-2 border-t border-slate-200 space-y-2.5">
-                <div className="flex gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setSbMode('signin')}
-                    className={`flex-1 py-1.5 rounded font-semibold border ${
-                      sbMode === 'signin'
-                        ? 'bg-emerald-700 text-white border-emerald-700'
-                        : 'bg-white text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSbMode('signup')}
-                    className={`flex-1 py-1.5 rounded font-semibold border ${
-                      sbMode === 'signup'
-                        ? 'bg-emerald-700 text-white border-emerald-700'
-                        : 'bg-white text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    Create Account
-                  </button>
-                </div>
-                {sbMode === 'signup' && (
-                  <input
-                    type="text"
-                    required
-                    value={sbFullName}
-                    onChange={(e) => setSbFullName(e.target.value)}
-                    placeholder="Full Name"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                  />
-                )}
                 <input
                   type="email"
                   required
@@ -309,7 +238,7 @@ export default function LoginPage() {
                   minLength={6}
                   value={sbPassword}
                   onChange={(e) => setSbPassword(e.target.value)}
-                  placeholder="Password (min 6 chars)"
+                  placeholder="Password"
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
                 <button
@@ -317,109 +246,66 @@ export default function LoginPage() {
                   disabled={sbLoading}
                   className="w-full py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {sbLoading
-                    ? 'Authenticating with Supabase...'
-                    : sbMode === 'signup'
-                    ? 'Sign Up with Supabase'
-                    : 'Sign In with Supabase'}
+                  {sbLoading ? 'Signing in...' : 'Sign In with Supabase'}
                 </button>
               </form>
             )}
-
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              MetaMask signs an EIP-191 <span className="font-mono">personal_sign</span> challenge; Supabase Auth verifies sessions against your Supabase project.
-            </p>
           </div>
 
-          <div className="my-5 flex items-center gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-3 text-xs text-slate-400">
             <div className="flex-1 h-px bg-slate-200" />
-            <span>or sign in with registry credentials</span>
+            <span>or sign in with email</span>
             <div className="flex-1 h-px bg-slate-200" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                Email
+              </label>
               <input
+                id="login-email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                placeholder="you@example.com"
+                className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Password</label>
+              <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1">
+                Password
+              </label>
               <input
+                id="login-password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                placeholder="Enter password"
+                className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600"
               />
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 transition-colors"
+              className="w-full py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-800 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
 
-          <p className="mt-5 text-xs text-slate-600">
-            No account required for landowners or buyers:{' '}
-            <Link href="/register-land" className="font-semibold text-emerald-700 hover:underline">
-              Register Land
-            </Link>{' '}
-            or{' '}
-            <Link href="/marketplace" className="font-semibold text-emerald-700 hover:underline">
-              Access Land
+          <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <span>
+              New here?{' '}
+              <Link href="/register" className="font-semibold text-emerald-700 hover:underline">
+                Create Account / Wallet Sign Up →
+              </Link>
+            </span>
+            <Link href="/admin/login" className="font-medium text-slate-500 hover:text-slate-800">
+              Admin Login
             </Link>
-            .
-          </p>
-        </div>
-
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg p-6">
-          <h2 className="text-base font-semibold text-slate-900">
-            Statutory Role Evaluation Accounts
-          </h2>
-          <p className="text-xs text-slate-600 mt-1 mb-4">
-            Select any authority tier below to sign in directly, or link your own MetaMask wallet from the dashboard after signing in.
-          </p>
-
-          <div className="divide-y divide-slate-200 border-t border-slate-200">
-            {ROLE_ACCOUNTS.map((acct) => (
-              <div
-                key={acct.role}
-                className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {acct.label}
-                    <span className="ml-2 font-mono text-xs font-normal text-slate-500">
-                      {acct.email}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-0.5">{acct.scope}</p>
-                  <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                    Genesis Wallet: {acct.wallet}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => {
-                    setEmail(acct.email);
-                    setPassword(acct.password);
-                    performLogin(acct.email, acct.password);
-                  }}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
-                >
-                  Sign In as {acct.role.replace('_', ' ')}
-                </button>
-              </div>
-            ))}
           </div>
         </div>
       </main>

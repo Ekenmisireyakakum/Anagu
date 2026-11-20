@@ -63,8 +63,8 @@ export default function MonitoringAndAdminPanel({
   if (mode === 'mqtt') {
     return (
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
-          <div>
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold text-slate-900">
               MQTT QoS 1 Notification Stream
             </h3>
@@ -72,7 +72,7 @@ export default function MonitoringAndAdminPanel({
               Real-time state transition events published across ANAGU registry topics.
             </p>
           </div>
-          <span className="text-xs font-mono text-slate-500 tabular-nums">
+          <span className="text-xs font-mono text-slate-500 tabular-nums shrink-0">
             {mqttLogs.length} Events
           </span>
         </div>
@@ -99,14 +99,14 @@ export default function MonitoringAndAdminPanel({
   if (mode === 'audit') {
     return (
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
-          <div>
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold text-slate-900">Immutable Audit Trail</h3>
             <p className="text-xs text-slate-500">
               Logs authorized mutations as well as rejected RBAC or smart-contract policy violations.
             </p>
           </div>
-          <span className="text-xs font-mono text-slate-500 tabular-nums">
+          <span className="text-xs font-mono text-slate-500 tabular-nums shrink-0">
             {auditLogs.length} Entries
           </span>
         </div>
@@ -157,10 +157,10 @@ export default function MonitoringAndAdminPanel({
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
-        <div>
+      <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900">
-            Registry User Directory & RBAC Controls
+            Registry User Directory &amp; RBAC Controls
           </h3>
           <p className="text-xs text-slate-500">
             Only LAND_ADMINISTRATOR may assign statutory roles or suspend accounts.

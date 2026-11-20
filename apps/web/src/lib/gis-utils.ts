@@ -103,6 +103,31 @@ export function wktCentroid(wkt: string): { lat: number; lon: number } | null {
   return { lat, lon };
 }
 
+export interface PlotSizePreset {
+  id: string;
+  label: string;
+  widthMeters: number;
+  heightMeters: number;
+}
+
+export const PLOT_SIZE_PRESETS: PlotSizePreset[] = [
+  { id: 'single', label: '1 Plot (~650 m²)', widthMeters: 36, heightMeters: 18 },
+  { id: 'standard', label: 'Standard (~1,620 m²)', widthMeters: 45, heightMeters: 36 },
+  { id: 'double', label: '2 Plots (~3,240 m²)', widthMeters: 90, heightMeters: 36 },
+  { id: 'acre', label: '1 Acre (~4,047 m²)', widthMeters: 64, heightMeters: 63.2 },
+  { id: 'hectare', label: '1 Hectare (10,000 m²)', widthMeters: 100, heightMeters: 100 },
+];
+
+export function parseLatLngText(input: string): { lat: number; lon: number } | null {
+  const match = input.trim().match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lon = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -85 || lat > 85 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
 export function buildPlotWktFromCenter(
   lat: number,
   lon: number,
@@ -124,7 +149,8 @@ export function getOpenStreetMapUrl(lat: number, lon: number, zoom = 17): string
 
 export function formatArea(sqm: number): string {
   if (sqm >= 10000) {
-    return `${(sqm / 10000).toFixed(2)} ha`;
+    return `${(sqm / 10000).toFixed(2)} ha (${sqm.toLocaleString('en-US', { maximumFractionDigits: 0 })} m²)`;
   }
-  return `${sqm.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²`;
+  const acres = sqm / 4046.8564;
+  return `${sqm.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} m² (${acres.toFixed(2)} acres)`;
 }

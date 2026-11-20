@@ -97,13 +97,13 @@ export default function AdminLoginPage() {
     <div className="min-h-screen flex flex-col bg-slate-50">
       <SiteHeader />
 
-      <main className="flex-1 flex items-center justify-center px-6 py-14">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-8 space-y-6">
+      <main className="flex-1 flex items-center justify-center px-4 sm:px-6 py-8 sm:py-14">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-8 space-y-6">
           <div className="border-b border-slate-200 pb-4">
             <p className="text-xs font-mono font-semibold uppercase tracking-wider text-emerald-700">
               ANAGU Registry Governance
             </p>
-            <h1 className="mt-1.5 text-2xl font-bold text-slate-900">Admin Portal Sign In</h1>
+            <h1 className="mt-1.5 text-xl sm:text-2xl font-bold text-slate-900">Admin Portal Sign In</h1>
             <p className="mt-1 text-xs text-slate-600 leading-relaxed">
               Sign in with your administrator credentials to approve pending land submissions before they appear on Access Land, or revoke active land records.
             </p>
@@ -169,7 +169,7 @@ export default function AdminLoginPage() {
             </form>
           )}
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <Link href="/" className="hover:text-slate-900 underline">
               ← Return to Home
             </Link>

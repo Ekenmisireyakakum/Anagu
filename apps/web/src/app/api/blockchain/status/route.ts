@@ -6,6 +6,7 @@ import path from 'node:path';
 interface DeployedAddressesFile {
   network?: string;
   chainId?: number;
+  ERC20Token?: string;
   LandTitleNFT?: string;
   LandRegistry?: string;
   ValidatorRegistry?: string;
@@ -62,6 +63,11 @@ export async function GET() {
   }
 
   const addresses = {
+    ERC20Token:
+      process.env.ERC20_TOKEN_CONTRACT_ADDRESS ||
+      process.env.NEXT_PUBLIC_ERC20_TOKEN_ADDRESS ||
+      deployedFile.ERC20Token ||
+      null,
     LandTitleNFT:
       process.env.LAND_TITLE_NFT_CONTRACT_ADDRESS ||
       process.env.NEXT_PUBLIC_LAND_TITLE_NFT_ADDRESS ||
@@ -79,11 +85,18 @@ export async function GET() {
       null,
   };
 
-  const rpcUrl = process.env.BESU_RPC_URL || process.env.NEXT_PUBLIC_BESU_RPC_URL || '';
+  const rpcUrl =
+    process.env.POLYGON_RPC_URL ||
+    process.env.POLYGON_AMOY_RPC_URL ||
+    process.env.NEXT_PUBLIC_POLYGON_RPC_URL ||
+    process.env.BESU_RPC_URL ||
+    process.env.NEXT_PUBLIC_BESU_RPC_URL ||
+    '';
   let rpcConnected = false;
   let blockNumber: number | null = null;
   let chainId: number | null = null;
   const deployedOnChain = {
+    ERC20Token: false,
     LandTitleNFT: false,
     LandRegistry: false,
     ValidatorRegistry: false,
@@ -106,11 +119,13 @@ export async function GET() {
         return Boolean(code && code !== '0x');
       };
 
-      const [c1, c2, c3] = await Promise.all([
+      const [c0, c1, c2, c3] = await Promise.all([
+        checkCode(addresses.ERC20Token),
         checkCode(addresses.LandTitleNFT),
         checkCode(addresses.LandRegistry),
         checkCode(addresses.ValidatorRegistry),
       ]);
+      deployedOnChain.ERC20Token = c0;
       deployedOnChain.LandTitleNFT = c1;
       deployedOnChain.LandRegistry = c2;
       deployedOnChain.ValidatorRegistry = c3;
@@ -122,13 +137,23 @@ export async function GET() {
   return NextResponse.json({
     mode:
       rpcConnected && deployedOnChain.LandTitleNFT && deployedOnChain.LandRegistry
-        ? 'LIVE_BESU_ONCHAIN'
+        ? chainId === 137 || chainId === 80002
+          ? 'LIVE_POLYGON_ONCHAIN'
+          : 'LIVE_BESU_ONCHAIN'
         : 'WEB3_CRYPTO_LEDGER',
+    targetNetwork: 'polygon',
     rpcConfigured: Boolean(rpcUrl),
     rpcConnected,
     blockNumber,
     chainId,
     contracts: [
+      {
+        name: 'LandToken',
+        standard: 'ERC-20 Settlement Token',
+        compiled: checkArtifact('LandToken'),
+        address: addresses.ERC20Token,
+        deployedOnChain: deployedOnChain.ERC20Token,
+      },
       {
         name: 'LandTitleNFT',
         standard: 'ERC-721 + AccessControl',
@@ -145,7 +170,7 @@ export async function GET() {
       },
       {
         name: 'ValidatorRegistry',
-        standard: 'Advisory QBFT Validators',
+        standard: 'Advisory Validators',
         compiled: checkArtifact('ValidatorRegistry'),
         address: addresses.ValidatorRegistry,
         deployedOnChain: deployedOnChain.ValidatorRegistry,

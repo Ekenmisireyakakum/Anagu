@@ -193,12 +193,12 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <SiteHeader />
-        <main className="flex-1 max-w-xl mx-auto px-6 py-20 text-center space-y-4">
+        <main className="flex-1 max-w-xl w-full mx-auto px-4 sm:px-6 py-14 sm:py-20 text-center space-y-4">
           <h1 className="text-2xl font-bold text-slate-900">Authentication Required</h1>
           <p className="text-sm text-slate-600">
             Sign in with a Citizen, Licensed Surveyor, Registrar, Land Administrator, or Executive Governor account to access the ANAGU registry console.
           </p>
-          <div className="pt-2 flex justify-center gap-3">
+          <div className="pt-2 flex flex-col sm:flex-row justify-center gap-3">
             <Link
               href="/login"
               className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800"
@@ -238,18 +238,20 @@ export default function DashboardPage() {
 
       {/* Contextual Role Sub-header */}
       <div className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="px-2.5 py-1 text-xs font-mono font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
+            <span className="px-2.5 py-1 text-xs font-mono font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 rounded shrink-0">
               {user.role}
             </span>
-            <div>
+            <div className="min-w-0">
               <span className="text-sm font-semibold text-slate-900">{user.fullName}</span>
-              <span className="ml-2 text-xs font-mono text-slate-500">{user.email}</span>
+              <span className="block sm:inline sm:ml-2 text-xs font-mono text-slate-500 break-all">
+                {user.email}
+              </span>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
             <span
               title={user.walletAddress}
               className={`px-2.5 py-1 font-mono rounded border ${
@@ -335,7 +337,7 @@ export default function DashboardPage() {
           </div>
         </div>
         {(walletNotice || wallet.error) && (
-          <div className="max-w-7xl mx-auto px-6 pb-3">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
             <div
               className={`px-3.5 py-2 rounded-md border text-xs ${
                 walletNotice?.ok
@@ -350,9 +352,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Dashboard Layout: 260px Sidebar + Main Viewport */}
-      <div className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 flex flex-col lg:flex-row gap-6 items-start">
+      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-6 flex flex-col lg:flex-row gap-5 sm:gap-6 items-start">
         <aside className="w-full lg:w-64 shrink-0 bg-white border border-slate-200 rounded-lg p-2">
-          <nav className="flex lg:flex-col gap-1 overflow-x-auto">
+          <nav className="flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
             {navTabs.map((tab) => {
               const isActive = activeTab === tab.id;
               return (

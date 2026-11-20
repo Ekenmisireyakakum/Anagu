@@ -223,7 +223,7 @@ function MapInner({
       />
 
       {/* Legend */}
-      <div className="absolute bottom-6 left-3 z-[1000] bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-md text-xs">
+      <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-md text-xs">
         <p className="font-semibold text-slate-900 mb-1.5">OpenStreetMap Cadastral Overlay</p>
         {Object.entries(STATUS_COLORS).map(([status, color]) => (
           <div key={status} className="flex items-center gap-2 mb-1 last:mb-0">
@@ -252,6 +252,7 @@ export default function GisMap() {
     zoom: number;
     key: number;
   } | null>(null);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
 
   const fetchParcels = useCallback(() => {
     const params: { status?: string; lga?: string } = {};
@@ -309,44 +310,76 @@ export default function GisMap() {
 
   return (
     <div className="h-full w-full relative">
+      {/* Mobile Compact Header Toggle */}
+      <div className="md:hidden absolute top-3 left-14 right-3 z-[1000] flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-md text-xs">
+        <span className="font-semibold text-slate-900 truncate">
+          GIS Cadastre ({parcels.length})
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={fetchParcels}
+            className="px-2.5 py-1.5 font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileToolsOpen((prev) => !prev)}
+            className="px-2.5 py-1.5 font-semibold text-white bg-slate-900 rounded hover:bg-slate-800"
+          >
+            {mobileToolsOpen ? 'Hide Tools' : 'Filter & Search'}
+          </button>
+        </div>
+      </div>
+
       {/* OpenStreetMap Toolbar & Filters */}
-      <div className="absolute top-3 left-14 right-3 xl:right-auto z-[1000] bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-md flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-semibold text-slate-900 whitespace-nowrap">
+      <div
+        className={`${
+          mobileToolsOpen ? 'flex' : 'hidden'
+        } md:flex absolute top-16 md:top-3 left-3 md:left-14 right-3 xl:right-auto z-[1000] bg-white border border-slate-200 rounded-lg p-3 md:px-3 md:py-2 shadow-md flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 text-xs max-h-[65dvh] overflow-y-auto`}
+      >
+        <span className="hidden md:inline font-semibold text-slate-900 whitespace-nowrap">
           OpenStreetMap GIS ({parcels.length})
         </span>
-        <select
-          aria-label="Filter by status"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-2 py-1 border border-slate-300 rounded bg-white text-slate-700"
-        >
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="revoked">Revoked</option>
-          <option value="disputed">Disputed</option>
-        </select>
-        <select
-          aria-label="Filter by LGA"
-          value={lgaFilter}
-          onChange={(e) => setLgaFilter(e.target.value)}
-          className="px-2 py-1 border border-slate-300 rounded bg-white text-slate-700"
-        >
-          <option value="">All LGAs</option>
-          <option value="Eti-Osa">Eti-Osa</option>
-          <option value="Ikeja">Ikeja</option>
-          <option value="Mainland">Mainland</option>
-          <option value="Surulere">Surulere</option>
-          <option value="Alimosho">Alimosho</option>
-          <option value="Kosofe">Kosofe</option>
-          <option value="Ibeju-Lekki">Ibeju-Lekki</option>
-          <option value="Lagos Island">Lagos Island</option>
-        </select>
+        <div className="grid grid-cols-2 md:flex gap-2">
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full md:w-auto px-2 py-1.5 md:py-1 border border-slate-300 rounded bg-white text-slate-700"
+          >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="revoked">Revoked</option>
+            <option value="disputed">Disputed</option>
+          </select>
+          <select
+            aria-label="Filter by LGA"
+            value={lgaFilter}
+            onChange={(e) => setLgaFilter(e.target.value)}
+            className="w-full md:w-auto px-2 py-1.5 md:py-1 border border-slate-300 rounded bg-white text-slate-700"
+          >
+            <option value="">All LGAs</option>
+            <option value="Eti-Osa">Eti-Osa</option>
+            <option value="Ikeja">Ikeja</option>
+            <option value="Mainland">Mainland</option>
+            <option value="Surulere">Surulere</option>
+            <option value="Alimosho">Alimosho</option>
+            <option value="Kosofe">Kosofe</option>
+            <option value="Ibeju-Lekki">Ibeju-Lekki</option>
+            <option value="Lagos Island">Lagos Island</option>
+          </select>
+        </div>
         <select
           aria-label="Jump to parcel"
           defaultValue=""
-          onChange={(e) => handleFlyToParcel(e.target.value)}
-          className="px-2 py-1 border border-slate-300 rounded bg-white text-slate-700 max-w-[160px]"
+          onChange={(e) => {
+            handleFlyToParcel(e.target.value);
+            setMobileToolsOpen(false);
+          }}
+          className="w-full md:w-auto md:max-w-[160px] px-2 py-1.5 md:py-1 border border-slate-300 rounded bg-white text-slate-700"
         >
           <option value="">Fly to parcel...</option>
           {parcels.map((p) => (
@@ -355,18 +388,24 @@ export default function GisMap() {
             </option>
           ))}
         </select>
-        <form onSubmit={handleOsmSearch} className="flex items-center gap-1.5">
+        <form
+          onSubmit={(e) => {
+            void handleOsmSearch(e);
+            setMobileToolsOpen(false);
+          }}
+          className="flex items-center gap-1.5"
+        >
           <input
             type="search"
             value={osmSearch}
             onChange={(e) => setOsmSearch(e.target.value)}
             placeholder="Locate street on OpenStreetMap..."
-            className="w-48 px-2 py-1 border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            className="flex-1 md:w-48 px-2 py-1.5 md:py-1 border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
           <button
             type="submit"
             disabled={searchingOsm}
-            className="px-2.5 py-1 font-semibold text-white bg-slate-900 rounded hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+            className="px-3 py-1.5 md:py-1 font-semibold text-white bg-slate-900 rounded hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
           >
             {searchingOsm ? '...' : 'Locate'}
           </button>
@@ -374,14 +413,14 @@ export default function GisMap() {
         <button
           type="button"
           onClick={fetchParcels}
-          className="px-2.5 py-1 font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 whitespace-nowrap"
+          className="hidden md:inline-block px-2.5 py-1 font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 whitespace-nowrap"
         >
           Refresh
         </button>
         {searchNotice && <span className="text-red-700">{searchNotice}</span>}
       </div>
 
-      <MapContainer center={center} zoom={12} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={center} zoom={12} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

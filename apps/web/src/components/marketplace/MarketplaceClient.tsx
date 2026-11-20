@@ -88,7 +88,7 @@ export default function MarketplaceClient({
     setLoading(true);
     try {
       const mktUrl = forceRefreshRates ? '/api/marketplace?refreshRates=1' : '/api/marketplace';
-      const [mktRes, meRes] = await Promise.all([fetch(mktUrl), fetch('/api/auth/me')]);
+      const [mktRes, meRes] = await Promise.all([fetch(mktUrl), fetch('/api/auth/me?optional=1')]);
       if (mktRes.ok) {
         const data = await mktRes.json();
         const items: LandListingRecord[] = data.listings || [];
@@ -115,23 +115,28 @@ export default function MarketplaceClient({
 
       if (meRes.ok) {
         const meData = await meRes.json();
-        const currentUser = meData.user as SafeUser;
-        setUser(currentUser);
-        setBuyerName((prev) => prev || currentUser.fullName);
-        const titlesRes = await fetch('/api/titles');
-        if (titlesRes.ok) {
-          const allTitles: DigitalLandTitle[] = await titlesRes.json();
-          const eligible = allTitles.filter(
-            (t) =>
-              !t.isRevoked &&
-              (t.ownerId === currentUser.id ||
-                currentUser.role === 'REGISTRAR' ||
-                currentUser.role === 'LAND_ADMINISTRATOR'),
-          );
-          setOwnedTitles(eligible);
-          if (eligible.length > 0) {
-            setListTokenId((prev) => prev || eligible[0].tokenId);
+        const currentUser = (meData?.user as SafeUser | null) || null;
+        if (currentUser) {
+          setUser(currentUser);
+          setBuyerName((prev) => prev || currentUser.fullName);
+          const titlesRes = await fetch('/api/titles');
+          if (titlesRes.ok) {
+            const allTitles: DigitalLandTitle[] = await titlesRes.json();
+            const eligible = allTitles.filter(
+              (t) =>
+                !t.isRevoked &&
+                (t.ownerId === currentUser.id ||
+                  currentUser.role === 'REGISTRAR' ||
+                  currentUser.role === 'LAND_ADMINISTRATOR'),
+            );
+            setOwnedTitles(eligible);
+            if (eligible.length > 0) {
+              setListTokenId((prev) => prev || eligible[0].tokenId);
+            }
           }
+        } else {
+          setUser(null);
+          setOwnedTitles([]);
         }
       } else {
         setUser(null);
@@ -397,37 +402,37 @@ export default function MarketplaceClient({
   return (
     <div className="space-y-8">
       {/* Header & Summary Strip */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="max-w-2xl">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 sm:gap-6">
+        <div className="max-w-2xl min-w-0">
           {!embedded && (
-            <p className="text-xs font-medium text-slate-500 mb-1.5">
-              ANAGU Access Land · Verified &amp; Unverified Parcels
+            <p className="text-xs font-mono font-semibold text-emerald-700 mb-1.5">
+              ANAGU Access Land · Polygon ERC-721 Titles &amp; ERC-20 Settlement
             </p>
           )}
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-            Access Land — browse verified &amp; unverified parcels to buy
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-slate-900">
+            Access Land — GIS-mapped parcels available to acquire
           </h1>
           <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-            Compare <strong className="text-slate-900">Verified</strong> parcels (deed and spatial checks complete) alongside <strong className="text-slate-900">Unverified</strong> parcels (pending deed verification). Purchase any available parcel using MetaMask, Trust Wallet, Coinbase, Rabby, Rainbow, Phantom, OKX, or Registry Escrow.
+            Inspect verified GIS-mapped parcels approved by governance and acquire Polygon <strong className="text-slate-900">ERC-721</strong> land titles using any Web3 wallet (<strong className="text-slate-900">ERC-20</strong> token or native settlement) or Registry Escrow.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 sm:gap-3 shrink-0 w-full lg:w-auto">
+          <div className="px-3.5 sm:px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
             <div className="text-[11px] text-slate-500">Verified</div>
-            <div className="text-xl font-bold font-mono text-emerald-700 tabular-nums">
+            <div className="text-lg sm:text-xl font-bold font-mono text-emerald-700 tabular-nums">
               {verifiedCount}
             </div>
           </div>
-          <div className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
+          <div className="px-3.5 sm:px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
             <div className="text-[11px] text-slate-500">Unverified</div>
-            <div className="text-xl font-bold font-mono text-amber-700 tabular-nums">
+            <div className="text-lg sm:text-xl font-bold font-mono text-amber-700 tabular-nums">
               {unverifiedCount}
             </div>
           </div>
-          <div className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
+          <div className="col-span-2 sm:col-span-1 px-3.5 sm:px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-md">
             <div className="text-[11px] text-slate-500">Available / Sold</div>
-            <div className="text-xl font-bold font-mono text-slate-900 tabular-nums">
+            <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 tabular-nums">
               {availableCount} / {soldCount}
             </div>
           </div>
@@ -435,7 +440,7 @@ export default function MarketplaceClient({
             <button
               type="button"
               onClick={() => setShowListForm((prev) => !prev)}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-900 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap"
+              className="col-span-2 sm:col-span-1 px-4 py-2.5 text-xs font-semibold text-slate-900 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap"
             >
               {showListForm ? 'Close Listing Form' : 'List Your Title for Sale'}
             </button>
@@ -443,7 +448,7 @@ export default function MarketplaceClient({
           {!embedded && (
             <Link
               href="/register-land"
-              className="px-4 py-2.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap"
+              className="col-span-2 sm:col-span-1 text-center px-4 py-2.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap"
             >
               Register Land
             </Link>
@@ -600,9 +605,9 @@ export default function MarketplaceClient({
       )}
 
       {/* Search & Filter Controls */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md">
+      <div className="bg-white border border-slate-200 rounded-lg p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md overflow-x-auto max-w-full">
             {(
               [
                 { id: 'ALL', label: `All Land (${listings.length})` },
@@ -614,7 +619,7 @@ export default function MarketplaceClient({
                 key={vTab.id}
                 type="button"
                 onClick={() => setVerificationFilter(vTab.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap tabular-nums ${
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 tabular-nums ${
                   verificationFilter === vTab.id
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -625,13 +630,13 @@ export default function MarketplaceClient({
             ))}
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md overflow-x-auto max-w-full">
             {lgaOptions.map((lga) => (
               <button
                 key={lga}
                 type="button"
                 onClick={() => setLgaFilter(lga)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                   lgaFilter === lga
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -642,13 +647,13 @@ export default function MarketplaceClient({
             ))}
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-md overflow-x-auto max-w-full">
             {(['ALL', 'AVAILABLE', 'SOLD'] as const).map((st) => (
               <button
                 key={st}
                 type="button"
                 onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                   statusFilter === st
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -660,8 +665,8 @@ export default function MarketplaceClient({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto xl:justify-end">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] font-mono text-emerald-950 tabular-nums">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full xl:w-auto xl:justify-end min-w-0">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] font-mono text-emerald-950 tabular-nums max-w-full">
             <span>
               1 ETH = $
               {marketRates.ethUsd.toLocaleString('en-US', {
@@ -689,7 +694,7 @@ export default function MarketplaceClient({
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search street, parcel code, verified/unverified, or zoning..."
+            placeholder="Search street, parcel code, or zoning..."
             className="w-full xl:w-72 px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600"
           />
         </div>
@@ -801,14 +806,14 @@ export default function MarketplaceClient({
                   />
                 </div>
 
-                <div className="p-6 space-y-5">
+                <div className="p-4 sm:p-6 space-y-5">
                   <div>
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                      <span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                      <span className="min-w-0 truncate">
                         {selectedListing.parcelReference} · {selectedListing.lga}, {selectedListing.state}
                       </span>
                       <span
-                        className={`font-semibold ${
+                        className={`font-semibold shrink-0 ${
                           selectedListing.status !== 'AVAILABLE'
                             ? 'text-slate-600'
                             : (selectedListing.verificationStatus || 'VERIFIED') === 'VERIFIED'
@@ -823,7 +828,7 @@ export default function MarketplaceClient({
                           : 'Unverified · Available'}
                       </span>
                     </div>
-                    <h2 className="mt-1.5 text-xl font-bold text-slate-900">
+                    <h2 className="mt-1.5 text-lg sm:text-xl font-bold text-slate-900">
                       {selectedListing.title}
                     </h2>
                     <p className="mt-1 text-sm text-slate-600">{selectedListing.address}</p>
@@ -840,27 +845,28 @@ export default function MarketplaceClient({
                   </div>
 
                   {/* Price & Specs */}
-                  <div className="py-3 border-y border-slate-200 flex items-baseline justify-between gap-4">
+                  <div className="py-3 border-y border-slate-200 flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 sm:gap-4">
                     <div>
                       <div className="text-xs text-slate-500">Acquisition Price</div>
-                      <div className="text-2xl font-bold text-slate-900 tabular-nums">
+                      <div className="text-xl sm:text-2xl font-bold text-slate-900 tabular-nums">
                         {formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)} USD
                       </div>
                       <div className="text-xs font-mono text-slate-600 tabular-nums">
                         {formatNgn(selectedListing.priceNgn)}
                       </div>
                     </div>
-                    <div className="text-right font-mono text-xs text-slate-600 tabular-nums">
+                    <div className="sm:text-right font-mono text-xs text-slate-600 tabular-nums">
                       <div className="font-semibold text-emerald-700">{selectedListing.priceEth} ETH</div>
-                      <div className="text-[11px] text-slate-500">
-                        ≈ ${ethToUsd(selectedListing.priceEth, marketRates).toLocaleString('en-US')} USD @ $
-                        {marketRates.ethUsd.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                        /ETH
+                      <div className="font-semibold text-purple-800">
+                        {(selectedListing.priceUsd && selectedListing.priceUsd > 0
+                          ? selectedListing.priceUsd
+                          : ngnToUsd(selectedListing.priceNgn, marketRates)
+                        ).toLocaleString('en-US')}{' '}
+                        ALT (ERC-20)
                       </div>
-                      <div>{selectedListing.areaSqm.toLocaleString()} m² · {selectedListing.zoning}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {selectedListing.areaSqm.toLocaleString()} m² · {selectedListing.zoning}
+                      </div>
                     </div>
                   </div>
 
@@ -1016,12 +1022,7 @@ export default function MarketplaceClient({
                               : 'Any Web3 Wallet Supported'}
                           </span>
                           <span className="text-[11px] text-slate-500 block">
-                            {wallet.discoveredWallets.length > 0
-                              ? `${wallet.discoveredWallets.length} Web3 wallet(s) detected (${wallet.discoveredWallets
-                                  .map((w) => w.name)
-                                  .slice(0, 3)
-                                  .join(', ')})`
-                              : 'MetaMask, Trust Wallet, Coinbase, Rabby, Rainbow, Phantom, OKX, QR'}
+                            Polygon ERC-721 Title · ERC-20 &amp; Web3 Wallet Settlement
                           </span>
                         </div>
                         <button
@@ -1141,7 +1142,7 @@ export default function MarketplaceClient({
       {/* User Acquisition Receipts Table */}
       {purchases.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-900">
               Recorded Land Acquisitions ({purchases.length})
             </h2>

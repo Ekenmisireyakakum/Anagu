@@ -58,12 +58,12 @@ export default function MetaMaskConnectModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="wallet-modal-title"
-      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-3 sm:p-4"
     >
       <div className="bg-white border border-slate-200 rounded-lg max-w-lg w-full overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
-          <div>
-            <h2 id="wallet-modal-title" className="text-base font-bold text-slate-900">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-start sm:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="wallet-modal-title" className="text-sm sm:text-base font-bold text-slate-900">
               Connect Any Web3 Wallet
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -74,13 +74,13 @@ export default function MetaMaskConnectModal() {
             type="button"
             onClick={wallet.closeModal}
             aria-label="Close wallet dialog"
-            className="text-slate-400 hover:text-slate-700 text-xl leading-none px-1.5 py-0.5"
+            className="text-slate-400 hover:text-slate-700 text-xl leading-none px-2 py-1 shrink-0"
           >
             ×
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 max-h-[85dvh] overflow-y-auto">
           {wallet.error && (
             <div className="p-3 rounded-md bg-red-50 border border-red-200 text-xs text-red-900 leading-relaxed">
               {wallet.error}
@@ -114,8 +114,30 @@ export default function MetaMaskConnectModal() {
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-slate-800">Switch EVM Network</div>
+                <div className="text-xs font-semibold text-slate-800">Switch EVM / Polygon Network</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchChain(137)}
+                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                      wallet.chainId === 137
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Polygon (137)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => wallet.switchChain(80002)}
+                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                      wallet.chainId === 80002
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Polygon Amoy (80002)
+                  </button>
                   <button
                     type="button"
                     onClick={() => wallet.switchChain(1)}
@@ -140,17 +162,6 @@ export default function MetaMaskConnectModal() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => wallet.switchChain(137)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 137
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Polygon (137)
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => wallet.switchChain(8453)}
                     className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
                       wallet.chainId === 8453
@@ -159,17 +170,6 @@ export default function MetaMaskConnectModal() {
                     }`}
                   >
                     Base (8453)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => wallet.switchChain(42161)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 42161
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Arbitrum (42161)
                   </button>
                   <button
                     type="button"
@@ -185,7 +185,7 @@ export default function MetaMaskConnectModal() {
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+              <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={wallet.disconnect}
@@ -205,7 +205,7 @@ export default function MetaMaskConnectModal() {
           ) : (
             <div className="space-y-4">
               {/* Wallet Selector Tabs */}
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-md">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-slate-100 rounded-md">
                 <button
                   type="button"
                   onClick={() => {

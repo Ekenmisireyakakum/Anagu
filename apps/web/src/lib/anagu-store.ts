@@ -1097,12 +1097,12 @@ export function issueMetaMaskChallenge(rawAddress: string): {
   const issuedAt = new Date().toISOString();
   const expiresAtMs = Date.now() + 5 * 60 * 1000;
   const message = [
-    'ANAGU Land Registry Authentication & Wallet Verification',
+    'ANAGU Land Registry Authentication & Wallet Sign-In',
     '',
     `Address: ${address}`,
     `Nonce: ${nonce}`,
     `Issued At: ${issuedAt}`,
-    'Network: Hyperledger Besu QBFT (Chain ID 1337)',
+    'Network: Polygon / EVM Compatible',
   ].join('\n');
 
   const record: AuthNonceRecord = {
@@ -1128,6 +1128,8 @@ export function verifyMetaMaskChallenge(input: {
   mode: 'login' | 'link';
   currentUser?: SafeUser | null;
   challengeToken?: string;
+  fullName?: string;
+  email?: string;
 }): { user: SafeUser; linked: boolean; isNewAccount?: boolean } {
   if (!input.address || !ethers.isAddress(input.address)) {
     throw new Error('Valid EVM wallet address is required');
@@ -1209,14 +1211,25 @@ export function verifyMetaMaskChallenge(input: {
   );
   let isNewAccount = false;
 
+  const cleanFullName = input.fullName?.trim();
+  const cleanEmail = input.email?.trim().toLowerCase();
+
   if (!matchedUser) {
+    if (
+      cleanEmail &&
+      store.users.some((u) => u.email.toLowerCase() === cleanEmail)
+    ) {
+      throw new Error('An account with this email already exists. Please sign in or leave email blank.');
+    }
     isNewAccount = true;
     matchedUser = {
       id: crypto.randomUUID(),
-      email: `${normalizedAddress.slice(0, 10).toLowerCase()}@wallet.anagu.gov.ng`,
+      email: cleanEmail || `${normalizedAddress.slice(0, 10).toLowerCase()}@wallet.anagu.app`,
       passwordHash: hashPassword(crypto.randomBytes(24).toString('hex')),
       role: 'CITIZEN',
-      fullName: `Citizen (${normalizedAddress.slice(0, 6)}...${normalizedAddress.slice(-4)})`,
+      fullName:
+        cleanFullName ||
+        `Land User (${normalizedAddress.slice(0, 6)}...${normalizedAddress.slice(-4)})`,
       phone: '',
       walletAddress: normalizedAddress,
       walletVerified: true,
@@ -1233,11 +1246,18 @@ export function verifyMetaMaskChallenge(input: {
       'USER',
       matchedUser.id,
       'SUCCESS',
-      `Created Citizen account authenticated via MetaMask wallet ${normalizedAddress}`,
+      `Created Citizen account authenticated via Web3 wallet ${normalizedAddress}`,
     );
   } else {
     if (!matchedUser.isActive) {
       throw new Error('This account is suspended. Contact Land Administrator.');
+    }
+    if (
+      cleanFullName &&
+      (matchedUser.fullName.startsWith('Citizen (') ||
+        matchedUser.fullName.startsWith('Land User ('))
+    ) {
+      matchedUser.fullName = cleanFullName;
     }
     matchedUser.walletVerified = true;
     matchedUser.walletLinkedAt = matchedUser.walletLinkedAt || now;
@@ -1249,7 +1269,7 @@ export function verifyMetaMaskChallenge(input: {
       'USER',
       matchedUser.id,
       'SUCCESS',
-      `Authenticated via MetaMask signature (${normalizedAddress})`,
+      `Authenticated via Web3 wallet signature (${normalizedAddress})`,
     );
   }
 
@@ -1410,16 +1430,15 @@ export function runOracleCheck(
 
   if (!institutionalVerified) {
     overallOutcome = 'DISPUTED';
-    notes = 'Conflicting claim detected in LASRECCA institutional registry.';
+    notes = 'Conflicting claim detected in institutional land registry.';
   } else if (!communityVerified) {
     overallOutcome = 'INCONCLUSIVE';
     notes = 'Institutional records clear, but community council attestation is missing.';
-  } else if (!hasDoc) {
-    overallOutcome = 'PENDING';
-    notes = 'Supporting title deed / survey document required before verification.';
   } else {
     overallOutcome = 'VERIFIED';
-    notes = 'Institutional registry and community council attestations verified claimant ownership.';
+    notes = hasDoc
+      ? 'GIS boundary, institutional records, and supporting documents verified claimant ownership.'
+      : 'GIS boundary and institutional ownership checks cleared with no conflicting claims.';
   }
 
   return {
@@ -1462,7 +1481,7 @@ export function submitLandApplication(
     saleTerms?: string;
     siteImageUrl?: string;
     state?: string;
-    lga: string;
+    lga?: string;
     address: string;
     wkt: string;
     claimantName?: string;
@@ -1490,7 +1509,7 @@ export function submitLandApplication(
 
   const parcelRef =
     input.parcelReference?.trim() ||
-    `LG-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Date.now().toString().slice(-3)}`;
+    `GIS-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Date.now().toString().slice(-3)}`;
 
   const allowedTypes = [
     'application/pdf',
@@ -1518,14 +1537,10 @@ export function submitLandApplication(
       fileSizeBytes: d.fileSizeBytes,
       sha256Hash: d.sha256Hash || sha256(`${d.fileName}:${d.fileSizeBytes}:${user.id}`),
       objectKey: `anagu-documents/${parcelRef}/${d.fileName}`,
-      category: d.category || 'Land Certificate / Deed',
+      category: d.category || 'Supporting Document',
       uploadedAt: new Date().toISOString(),
     };
   });
-
-  if (docs.length === 0) {
-    throw new Error('At least one land certificate or deed document (PDF, PNG, or JPEG) is required');
-  }
 
   const appId = crypto.randomUUID();
   const spatial = verifyWktParcel(input.wkt, appId);
@@ -1537,6 +1552,9 @@ export function submitLandApplication(
       : null;
   const computedNgn = parsedPriceUsd ? usdToNgn(parsedPriceUsd, rates) : null;
   const computedEth = parsedPriceUsd ? usdToEth(parsedPriceUsd, rates) : null;
+  const resolvedLga = input.lga?.trim() || 'Mapped Area';
+  const resolvedAddress =
+    input.address?.trim() || input.parcelTitle?.trim() || resolvedLga;
 
   const app: LandApplicationRecord = {
     id: appId,
@@ -1561,9 +1579,9 @@ export function submitLandApplication(
     listingHeadline: input.listingHeadline?.trim() || undefined,
     saleTerms: input.saleTerms?.trim() || undefined,
     siteImageUrl: input.siteImageUrl?.trim() || undefined,
-    state: input.state || 'Lagos',
-    lga: input.lga.trim(),
-    address: input.address.trim(),
+    state: input.state?.trim() || 'GIS Cadastre',
+    lga: resolvedLga,
+    address: resolvedAddress,
     wkt: input.wkt.trim(),
     claimantName: input.claimantName?.trim() || user.fullName,
     nationalIdHash: sha256(input.nationalId || user.id),
@@ -1669,7 +1687,7 @@ function publishApplicationToCheckLands(
     imageUrl: app.siteImageUrl || '/images/parcel_lekki_residential.jpg',
     description:
       app.saleTerms ||
-      `${app.ownershipType || 'Freehold'} parcel verified by Administrator${app.surveyPlanNumber ? ` · Survey ${app.surveyPlanNumber}` : ''}${app.deedReference ? ` · Deed ${app.deedReference}` : ''}.`,
+      `GIS-mapped ${app.zoning || 'Residential'} parcel (${app.ownershipType || 'Freehold'}) verified by Administrator${app.surveyPlanNumber ? ` · Survey ${app.surveyPlanNumber}` : ''}.`,
     ownershipType: app.ownershipType,
     surveyPlanNumber: app.surveyPlanNumber,
     deedReference: app.deedReference,
@@ -1883,7 +1901,11 @@ export function performApplicationWorkflowAction(
       const blockNumber = store.nextBlockNumber++;
       const txHash =
         verifiedProof?.onChainTxHash || makeTxHash(`mint:${app.parcelReference}:${tokenId}`);
-      const docConcatHash = sha256(app.documents.map((d) => d.sha256Hash).join(':'));
+      const docConcatHash = sha256(
+        app.documents.length > 0
+          ? app.documents.map((d) => d.sha256Hash).join(':')
+          : `gis-parcel:${app.id}:${app.wkt}`,
+      );
 
       const title: DigitalLandTitle = {
         tokenId,
@@ -1975,16 +1997,12 @@ export function performApplicationWorkflowAction(
           `Overlap detected with ${spatial.overlappingParcels.map((p) => p.parcelNumber).join(', ')}. Use Admin Override to approve or Reject this submission.`,
         );
       }
-      if (app.documents.length === 0) {
-        throw new Error('At least one deed or land certificate document is required before verification');
-      }
-
       if (!app.surveyReport) {
         app.surveyReport = {
           id: crypto.randomUUID(),
           surveyorId: user.id,
           surveyorName: user.fullName,
-          findings: 'Administrative spatial and deed beacon verification completed.',
+          findings: 'Administrative GIS boundary and parcel verification completed.',
           boundaryConfirmed: true,
           submittedAt: now,
         };
@@ -1994,7 +2012,7 @@ export function performApplicationWorkflowAction(
       }
       app.legalVerified = true;
       app.legalOfficerName = user.fullName;
-      app.legalNotes = payload?.registrarNotes?.trim() || 'Deed and land certificate verified by Administrator for Check Lands.';
+      app.legalNotes = payload?.registrarNotes?.trim() || 'GIS parcel and ownership details verified by Administrator for Access Land.';
 
       let title = store.titles.find((t) => t.applicationId === app.id);
       if (!title) {
@@ -2032,7 +2050,11 @@ export function performApplicationWorkflowAction(
         const tokenId = store.nextTokenId++;
         const blockNumber = store.nextBlockNumber++;
         const txHash = makeTxHash(`verify-publish:${app.parcelReference}:${tokenId}`);
-        const docConcatHash = sha256(app.documents.map((d) => d.sha256Hash).join(':'));
+        const docConcatHash = sha256(
+          app.documents.length > 0
+            ? app.documents.map((d) => d.sha256Hash).join(':')
+            : `gis-parcel:${app.id}:${app.wkt}`,
+        );
 
         title = {
           tokenId,

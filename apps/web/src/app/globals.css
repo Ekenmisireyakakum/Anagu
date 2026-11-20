@@ -3,3 +3,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+@media (max-width: 639px) {
+  .leaflet-control-attribution {
+    max-width: 72vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+}

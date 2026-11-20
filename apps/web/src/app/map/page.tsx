@@ -20,10 +20,10 @@ export default function MapPage() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <SiteHeader />
-      <div className="flex-1" style={{ height: 'calc(100vh - 64px)' }}>
+      <div className="flex-1 h-[calc(100dvh-64px)] min-h-[480px]">
         {!GisMap ? (
-          <div className="h-full flex items-center justify-center text-sm text-slate-600">
-            Loading interactive Lagos GIS registry map...
+          <div className="h-full flex items-center justify-center p-4 text-sm text-slate-600 text-center">
+            Loading interactive GIS land map...
           </div>
         ) : (
           <GisMap />

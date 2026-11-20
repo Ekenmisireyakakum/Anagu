@@ -17,9 +17,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'ANAGU — Land Administration & Blockchain Title Registry',
+  title: 'ANAGU — GIS Land Mapping & Polygon Web3 Title Registry',
   description:
-    'Blockchain-based land administration framework for Nigeria combining PostGIS spatial verification, institutional & community ownership oracles, Hyperledger Besu ERC-721 titles, and statutory revocation.',
+    'Map and register land locations interactively with GIS, verify parcels, and issue Polygon ERC-721 land titles with ERC-20 token settlement and simple Web3 wallet sign-up.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

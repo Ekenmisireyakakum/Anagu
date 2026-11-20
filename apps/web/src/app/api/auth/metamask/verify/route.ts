@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
       mode,
       currentUser,
       challengeToken,
+      fullName: typeof body.fullName === 'string' ? body.fullName : undefined,
+      email: typeof body.email === 'string' ? body.email : undefined,
     });
 
     await persistStoreToSupabase();

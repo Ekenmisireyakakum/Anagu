@@ -244,7 +244,7 @@ export default function TitlesAndGovernancePanel({
       {/* Registry-Controlled Ownership Transfer + Section 28 Revocation Controls */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Ownership Transfer */}
-        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-5 space-y-4">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="text-sm font-semibold text-slate-900">
               Registry-Controlled Ownership Transfer
@@ -302,7 +302,7 @@ export default function TitlesAndGovernancePanel({
         </div>
 
         {/* Section 28 Statutory Revocation */}
-        <form onSubmit={handleRevoke} className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+        <form onSubmit={handleRevoke} className="bg-white border border-slate-200 rounded-lg p-4 sm:p-5 space-y-4">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="text-sm font-semibold text-slate-900">
               Section 28 Statutory Revocation (Land Use Act 1978)
@@ -376,12 +376,12 @@ export default function TitlesAndGovernancePanel({
 
       {/* Digital Land Titles Ledger */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-slate-900">
             Minted ERC-721 Land Title Certificates ({titles.length})
           </h3>
           <span className="text-xs font-mono text-slate-500">
-            On-chain hashes only · Off-chain deeds & PII
+            On-chain hashes only · Off-chain deeds &amp; PII
           </span>
         </div>
 
@@ -392,10 +392,10 @@ export default function TitlesAndGovernancePanel({
         ) : (
           <div className="divide-y divide-slate-200">
             {titles.map((title) => (
-              <div key={title.tokenId} className="p-5 space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2.5">
+              <div key={title.tokenId} className="p-4 sm:p-5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-base font-bold font-mono text-slate-900 tabular-nums">
                         Token #{title.tokenId} · {title.parcelReference}
                       </span>
@@ -413,7 +413,7 @@ export default function TitlesAndGovernancePanel({
                       {title.address} · {title.lga}, {title.state} · {title.areaSqm.toLocaleString()} m²
                     </p>
                   </div>
-                  <div className="text-right text-xs font-mono text-slate-600 tabular-nums">
+                  <div className="sm:text-right text-xs font-mono text-slate-600 tabular-nums shrink-0">
                     <div>Block #{title.blockNumber}</div>
                     <div>Owner: {title.ownerName}</div>
                   </div>

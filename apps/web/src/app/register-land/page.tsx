@@ -21,7 +21,7 @@ export default function RegisterLandPage() {
         {submittedNotice && (
           <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-emerald-950 flex flex-wrap items-center justify-between gap-3">
             <span>
-              Your land registration and deed submission has been recorded and queued for Administrator approval before appearing on Access Land.
+              Your mapped land has been registered and queued for Administrator approval before appearing on Access Land.
             </span>
             <div className="flex items-center gap-3 shrink-0">
               <Link

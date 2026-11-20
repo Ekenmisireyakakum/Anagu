@@ -47,9 +47,9 @@ export default function ContactPage() {
     <div className="min-h-screen flex flex-col bg-slate-50">
       <SiteHeader />
 
-      <main className="flex-1 max-w-5xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <div className="bg-white border border-slate-200 rounded-lg p-5 sm:p-6">
             <h1 className="text-2xl font-bold text-slate-900">Contact Registry Desk</h1>
             <p className="mt-2 text-sm text-slate-600 leading-relaxed">
               Reach the ANAGU Lands Administration & Technical Integration Office for cadastral pilot inquiries, surveyor onboarding, or statutory audit requests.
@@ -69,7 +69,7 @@ export default function ContactPage() {
               </div>
               <div>
                 <dt className="text-xs text-slate-500">Technical Desk</dt>
-                <dd className="font-mono text-xs text-slate-900 mt-0.5">
+                <dd className="font-mono text-xs text-slate-900 mt-0.5 break-all">
                   registry-support@anagu.gov.ng
                 </dd>
               </div>
@@ -77,7 +77,7 @@ export default function ContactPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg p-6">
+        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg p-5 sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Submit an Inquiry</h2>
           {statusMsg && (
             <div
@@ -154,7 +154,7 @@ export default function ContactPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 transition-colors"
             >
               {submitting ? 'Submitting...' : 'Send Inquiry'}
             </button>

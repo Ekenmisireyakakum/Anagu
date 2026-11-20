@@ -8,7 +8,11 @@ import {
   syncApplicationWithRates,
 } from '../../../lib/anagu-store';
 import { refreshMarketRates } from '../../../lib/pricing';
-import { getAuthenticatedUser, SESSION_COOKIE_NAME } from '../../../lib/server-auth';
+import {
+  getAuthenticatedUser,
+  getSessionCookieOptions,
+  SESSION_COOKIE_NAME,
+} from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
   const store = await ensureStoreReady();
@@ -47,12 +51,7 @@ export async function POST(request: NextRequest) {
 
     if (!sessionUser) {
       const token = createSessionToken(applicant);
-      response.cookies.set(SESSION_COOKIE_NAME, token, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 86400,
-      });
+      response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions(request, 86400));
     }
     return response;
   } catch (err) {

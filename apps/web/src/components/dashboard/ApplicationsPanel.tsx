@@ -182,7 +182,7 @@ export default function ApplicationsPanel({
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         {/* Applications Queue List */}
         <div className="xl:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-900">
               Registration Queue ({filtered.length})
             </h2>
@@ -209,7 +209,7 @@ export default function ApplicationsPanel({
                       isSelected ? 'bg-emerald-50/60' : 'bg-white'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-mono text-sm font-semibold text-slate-900 tabular-nums">
                         {app.parcelReference}
                       </span>
@@ -218,7 +218,7 @@ export default function ApplicationsPanel({
                       </span>
                     </div>
                     <p className="text-xs text-slate-700 mt-1 truncate">{app.address}</p>
-                    <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500 font-mono tabular-nums">
+                    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 font-mono tabular-nums">
                       <span>{app.lga}, {app.state}</span>
                       <span>
                         {app.spatialVerification ? `${app.spatialVerification.areaSqm.toLocaleString()} m²` : 'Spatial pending'}
@@ -232,16 +232,16 @@ export default function ApplicationsPanel({
         </div>
 
         {/* Selected Application Dossier */}
-        <div className="xl:col-span-7 bg-white border border-slate-200 rounded-lg">
+        <div className="xl:col-span-7 bg-white border border-slate-200 rounded-lg min-w-0">
           {!selected ? (
-            <div className="p-8 text-sm text-slate-500">
+            <div className="p-6 sm:p-8 text-sm text-slate-500">
               Select an application from the queue to inspect verification gates and execute actions.
             </div>
           ) : (
             <div className="divide-y divide-slate-200">
               {/* Header */}
-              <div className="p-5 flex flex-wrap items-start justify-between gap-4">
-                <div>
+              <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <h3 className="text-lg font-bold text-slate-900 font-mono tabular-nums">
                       {selected.parcelReference}
@@ -328,7 +328,7 @@ export default function ApplicationsPanel({
                   )}
                 </div>
                 {selected.tokenId !== null && (
-                  <div className="text-right">
+                  <div className="sm:text-right shrink-0">
                     <div className="text-xs text-slate-500">ERC-721 Title Issued</div>
                     <div className="text-base font-bold font-mono text-emerald-700 tabular-nums">
                       Token #{selected.tokenId}

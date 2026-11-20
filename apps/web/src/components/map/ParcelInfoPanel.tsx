@@ -40,14 +40,14 @@ export default function ParcelInfoPanel({ result, drawnWkt, isLoading, onClose }
   };
 
   return (
-    <div className="absolute top-16 sm:top-4 right-4 z-[1000] bg-white border border-slate-200 rounded-lg shadow-lg p-4 w-80 max-w-[calc(100vw-2rem)]">
-      <div className="flex justify-between items-center mb-3">
+    <div className="absolute bottom-3 left-3 right-3 sm:bottom-auto sm:left-auto sm:top-16 md:top-4 sm:right-4 z-[1000] bg-white border border-slate-200 rounded-lg shadow-lg p-3.5 sm:p-4 sm:w-80 max-h-[60dvh] overflow-y-auto">
+      <div className="flex justify-between items-center mb-3 gap-2">
         <h3 className="text-sm font-semibold text-slate-900">OpenStreetMap Spatial Check</h3>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close verification results"
-          className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1"
+          className="text-slate-400 hover:text-slate-700 text-lg leading-none px-1.5 py-0.5 shrink-0"
         >
           ×
         </button>

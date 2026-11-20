@@ -50,12 +50,12 @@ export default function HowItWorksPage() {
     <div className="min-h-screen flex flex-col bg-slate-50">
       <SiteHeader />
 
-      <main className="flex-1 max-w-5xl mx-auto px-6 py-12">
-        <div className="mb-10">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="mb-8 sm:mb-10">
           <p className="text-xs font-medium text-slate-500 mb-2">
             Workflow Specification · End-to-End Lifecycle
           </p>
-          <h1 className="text-3xl font-bold text-slate-900">How ANAGU Processes Land Titles</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">How ANAGU Processes Land Titles</h1>
           <p className="mt-2 text-sm text-slate-600 max-w-2xl">
             Every application passes through sequential spatial, community, institutional, legal, and blockchain gates enforced by backend role-based access control.
           </p>
@@ -65,7 +65,7 @@ export default function HowItWorksPage() {
           {STAGES.map((stage) => (
             <div
               key={stage.num}
-              className="bg-white border border-slate-200 rounded-lg p-6"
+              className="bg-white border border-slate-200 rounded-lg p-5 sm:p-6"
             >
               <div className="text-xs font-mono text-emerald-700 font-semibold tabular-nums">
                 Stage {stage.num} · {stage.role}
@@ -79,16 +79,16 @@ export default function HowItWorksPage() {
           ))}
         </div>
 
-        <div className="mt-10 flex flex-wrap items-center gap-4">
+        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
           <Link
             href="/login"
-            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors"
+            className="text-center px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors"
           >
             Sign In to Test Workflow
           </Link>
           <Link
             href="/marketplace"
-            className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
+            className="text-center px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
           >
             Access Land
           </Link>
