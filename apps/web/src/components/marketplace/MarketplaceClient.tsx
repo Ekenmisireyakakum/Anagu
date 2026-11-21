@@ -11,6 +11,8 @@ import {
   usdToNgn,
   type MarketRates,
 } from '../../lib/pricing';
+import { watchLandTokenInWallet } from '../../lib/metamask';
+import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
 import { useWallet } from '../WalletContext';
 import type {
   DigitalLandTitle,
@@ -982,8 +984,18 @@ export default function MarketplaceClient({
                         Issued Title: Token #{selectedListing.tokenId}
                       </div>
                       {selectedListing.purchaseTxHash && (
-                        <div className="font-mono text-[11px] text-slate-500 truncate">
-                          Tx: {selectedListing.purchaseTxHash}
+                        <div className="font-mono text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+                          <span className="truncate">Tx: {selectedListing.purchaseTxHash}</span>
+                          {/^0x[0-9a-fA-F]{64}$/.test(selectedListing.purchaseTxHash) && (
+                            <a
+                              href={getPolygonExplorerTxUrl(selectedListing.purchaseTxHash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-sans font-semibold text-emerald-700 hover:underline shrink-0"
+                            >
+                              Polygonscan →
+                            </a>
+                          )}
                         </div>
                       )}
                       <div className="pt-2">
@@ -1025,13 +1037,24 @@ export default function MarketplaceClient({
                             Polygon ERC-721 Title · ERC-20 &amp; Web3 Wallet Settlement
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => wallet.openModal('all')}
-                          className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap shrink-0"
-                        >
-                          {wallet.isConnected ? 'Switch Web3 Wallet' : 'Choose Web3 Wallet'}
-                        </button>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          {wallet.isConnected && wallet.provider && (
+                            <button
+                              type="button"
+                              onClick={() => wallet.provider && void watchLandTokenInWallet(wallet.provider)}
+                              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:underline whitespace-nowrap"
+                            >
+                              + Add ALT Token
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => wallet.openModal('all')}
+                            className="text-xs font-semibold text-emerald-700 hover:underline whitespace-nowrap"
+                          >
+                            {wallet.isConnected ? 'Switch Web3 Wallet' : 'Choose Web3 Wallet'}
+                          </button>
+                        </div>
                       </div>
 
                       {selectedListing.verificationStatus !== 'UNVERIFIED' &&
@@ -1119,8 +1142,18 @@ export default function MarketplaceClient({
                         Parcel: {latestReceipt.purchase.parcelReference} · Method:{' '}
                         {latestReceipt.purchase.walletLabel || latestReceipt.purchase.paymentMethod}
                       </div>
-                      <div className="font-mono text-[11px] truncate">
-                        Tx Hash: {latestReceipt.purchase.txHash}
+                      <div className="font-mono text-[11px] flex flex-wrap items-center gap-2">
+                        <span className="truncate">Tx Hash: {latestReceipt.purchase.txHash}</span>
+                        {/^0x[0-9a-fA-F]{64}$/.test(latestReceipt.purchase.txHash) && (
+                          <a
+                            href={getPolygonExplorerTxUrl(latestReceipt.purchase.txHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-sans font-semibold text-emerald-800 underline shrink-0"
+                          >
+                            Polygonscan →
+                          </a>
+                        )}
                       </div>
                       <div className="pt-1">
                         <Link

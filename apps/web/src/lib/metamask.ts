@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { POLYGON_AMOY_PUBLIC_CONFIG } from './polygon-config';
 
 export type WalletProviderType = string;
 
@@ -48,15 +49,22 @@ export const BESU_RPC_URL = process.env.NEXT_PUBLIC_BESU_RPC_URL || 'http://127.
 export const POLYGON_MAINNET_CHAIN_ID = 137;
 export const POLYGON_AMOY_CHAIN_ID = 80002;
 export const POLYGON_CHAIN_ID = Number(
-  process.env.NEXT_PUBLIC_POLYGON_CHAIN_ID || POLYGON_AMOY_CHAIN_ID,
+  process.env.NEXT_PUBLIC_POLYGON_CHAIN_ID || POLYGON_AMOY_PUBLIC_CONFIG.chainId,
 );
 export const POLYGON_RPC_URL =
-  process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://rpc-amoy.polygon.technology/';
+  process.env.NEXT_PUBLIC_POLYGON_RPC_URL || POLYGON_AMOY_PUBLIC_CONFIG.rpcUrl;
 
-export const ERC20_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_ERC20_TOKEN_ADDRESS || '';
-export const LAND_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_LAND_REGISTRY_ADDRESS || '';
-export const LAND_TITLE_NFT_ADDRESS = process.env.NEXT_PUBLIC_LAND_TITLE_NFT_ADDRESS || '';
-export const VALIDATOR_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_VALIDATOR_REGISTRY_ADDRESS || '';
+export const ERC20_TOKEN_ADDRESS =
+  process.env.NEXT_PUBLIC_ERC20_TOKEN_ADDRESS || POLYGON_AMOY_PUBLIC_CONFIG.contracts.ERC20Token;
+export const LAND_REGISTRY_ADDRESS =
+  process.env.NEXT_PUBLIC_LAND_REGISTRY_ADDRESS ||
+  POLYGON_AMOY_PUBLIC_CONFIG.contracts.LandRegistry;
+export const LAND_TITLE_NFT_ADDRESS =
+  process.env.NEXT_PUBLIC_LAND_TITLE_NFT_ADDRESS ||
+  POLYGON_AMOY_PUBLIC_CONFIG.contracts.LandTitleNFT;
+export const VALIDATOR_REGISTRY_ADDRESS =
+  process.env.NEXT_PUBLIC_VALIDATOR_REGISTRY_ADDRESS ||
+  POLYGON_AMOY_PUBLIC_CONFIG.contracts.ValidatorRegistry;
 
 export const ERC20_ABI = [
   'function name() external view returns (string)',
@@ -77,6 +85,10 @@ export const LAND_REGISTRY_ABI = [
 export const LAND_TITLE_NFT_ABI = [
   'function ownerOf(uint256 tokenId) external view returns (address)',
   'function isRevoked(uint256 tokenId) external view returns (bool)',
+  'function REGISTRY_ROLE() external view returns (bytes32)',
+  'function GOVERNOR_ROLE() external view returns (bytes32)',
+  'function hasRole(bytes32 role, address account) external view returns (bool)',
+  'function grantRole(bytes32 role, address account) external',
   'function getTitleMetadata(uint256 tokenId) external view returns (tuple(string parcelReference, bytes32 spatialHash, bytes32 ownerReference, bytes32 documentHash, uint256 issuedAt, bool isRevoked, uint256 revokedAt, string revocationGrounds, address revokedBy))',
 ];
 
@@ -657,7 +669,7 @@ export async function switchEvmChain(
             {
               chainId: '0x13882',
               chainName: 'Polygon Amoy Testnet',
-              rpcUrls: ['https://rpc-amoy.polygon.technology/'],
+              rpcUrls: [POLYGON_AMOY_PUBLIC_CONFIG.rpcUrl],
               blockExplorerUrls: ['https://amoy.polygonscan.com/'],
               nativeCurrency: {
                 name: 'POL',
@@ -855,7 +867,7 @@ export async function authorizeLandRegistryAction(
     ...('listingId' in params
       ? [
           `Listing ID: ${params.listingId}`,
-          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} ETH)`,
+          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} ${ERC20_TOKEN_ADDRESS ? 'ALT' : 'ETH'})`,
           `Seller Settlement Wallet: ${params.sellerAddress}`,
         ]
       : []),
@@ -878,3 +890,77 @@ export async function authorizeLandRegistryAction(
     walletName: walletTag,
   };
 }
+
+export async function watchLandTokenInWallet(provider: Eip1193Provider): Promise<boolean> {
+  if (!ERC20_TOKEN_ADDRESS || !ethers.isAddress(ERC20_TOKEN_ADDRESS)) return false;
+  try {
+    const ok = await provider.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: ethers.getAddress(ERC20_TOKEN_ADDRESS),
+          symbol: POLYGON_AMOY_PUBLIC_CONFIG.tokenMetadata.symbol,
+          decimals: POLYGON_AMOY_PUBLIC_CONFIG.tokenMetadata.decimals,
+        },
+      } as unknown as Record<string, unknown>,
+    });
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function grantLandRegistryRolesOnPolygon(
+  provider: Eip1193Provider,
+  signerAddress: string,
+): Promise<{ registryTxHash?: string; governorTxHash?: string }> {
+  await switchEvmChain(provider, POLYGON_CHAIN_ID);
+  const checksumSigner = ethers.getAddress(signerAddress);
+  const nftAddress = ethers.getAddress(LAND_TITLE_NFT_ADDRESS);
+  const registryAddress = ethers.getAddress(LAND_REGISTRY_ADDRESS);
+
+  const readProvider = new ethers.JsonRpcProvider(POLYGON_RPC_URL);
+  const nftRead = new ethers.Contract(nftAddress, LAND_TITLE_NFT_ABI, readProvider);
+  const [regRole, govRole] = await Promise.all([
+    nftRead.REGISTRY_ROLE() as Promise<string>,
+    nftRead.GOVERNOR_ROLE() as Promise<string>,
+  ]);
+  const [hasReg, hasGov] = await Promise.all([
+    nftRead.hasRole(regRole, registryAddress) as Promise<boolean>,
+    nftRead.hasRole(govRole, registryAddress) as Promise<boolean>,
+  ]);
+
+  const nftIface = new ethers.Interface(LAND_TITLE_NFT_ABI);
+  let registryTxHash: string | undefined;
+  let governorTxHash: string | undefined;
+
+  if (!hasReg) {
+    registryTxHash = (await provider.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: checksumSigner,
+          to: nftAddress,
+          data: nftIface.encodeFunctionData('grantRole', [regRole, registryAddress]),
+        },
+      ],
+    })) as string;
+  }
+
+  if (!hasGov) {
+    governorTxHash = (await provider.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: checksumSigner,
+          to: nftAddress,
+          data: nftIface.encodeFunctionData('grantRole', [govRole, registryAddress]),
+        },
+      ],
+    })) as string;
+  }
+
+  return { registryTxHash, governorTxHash };
+}
+

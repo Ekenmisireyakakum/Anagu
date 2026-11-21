@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import fs from 'node:fs';
 import path from 'node:path';
+import { POLYGON_AMOY_PUBLIC_CONFIG } from '../../../../lib/polygon-config';
 
 interface DeployedAddressesFile {
   network?: string;
@@ -67,22 +68,22 @@ export async function GET() {
       process.env.ERC20_TOKEN_CONTRACT_ADDRESS ||
       process.env.NEXT_PUBLIC_ERC20_TOKEN_ADDRESS ||
       deployedFile.ERC20Token ||
-      null,
+      POLYGON_AMOY_PUBLIC_CONFIG.contracts.ERC20Token,
     LandTitleNFT:
       process.env.LAND_TITLE_NFT_CONTRACT_ADDRESS ||
       process.env.NEXT_PUBLIC_LAND_TITLE_NFT_ADDRESS ||
       deployedFile.LandTitleNFT ||
-      null,
+      POLYGON_AMOY_PUBLIC_CONFIG.contracts.LandTitleNFT,
     LandRegistry:
       process.env.LAND_REGISTRY_CONTRACT_ADDRESS ||
       process.env.NEXT_PUBLIC_LAND_REGISTRY_ADDRESS ||
       deployedFile.LandRegistry ||
-      null,
+      POLYGON_AMOY_PUBLIC_CONFIG.contracts.LandRegistry,
     ValidatorRegistry:
       process.env.VALIDATOR_REGISTRY_CONTRACT_ADDRESS ||
       process.env.NEXT_PUBLIC_VALIDATOR_REGISTRY_ADDRESS ||
       deployedFile.ValidatorRegistry ||
-      null,
+      POLYGON_AMOY_PUBLIC_CONFIG.contracts.ValidatorRegistry,
   };
 
   const rpcUrl =
@@ -91,7 +92,7 @@ export async function GET() {
     process.env.NEXT_PUBLIC_POLYGON_RPC_URL ||
     process.env.BESU_RPC_URL ||
     process.env.NEXT_PUBLIC_BESU_RPC_URL ||
-    '';
+    POLYGON_AMOY_PUBLIC_CONFIG.rpcUrl;
   let rpcConnected = false;
   let blockNumber: number | null = null;
   let chainId: number | null = null;
@@ -101,13 +102,15 @@ export async function GET() {
     LandRegistry: false,
     ValidatorRegistry: false,
   };
+  let registryRoleGranted: boolean | null = null;
+  let governorRoleGranted: boolean | null = null;
 
   if (rpcUrl) {
     try {
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const [bn, net] = await withTimeout(
         Promise.all([provider.getBlockNumber(), provider.getNetwork()]),
-        2000,
+        3500,
       );
       rpcConnected = true;
       blockNumber = bn;
@@ -115,7 +118,7 @@ export async function GET() {
 
       const checkCode = async (addr: string | null) => {
         if (!addr || !ethers.isAddress(addr)) return false;
-        const code = await withTimeout(provider.getCode(addr), 1500);
+        const code = await withTimeout(provider.getCode(addr), 2500);
         return Boolean(code && code !== '0x');
       };
 
@@ -129,10 +132,42 @@ export async function GET() {
       deployedOnChain.LandTitleNFT = c1;
       deployedOnChain.LandRegistry = c2;
       deployedOnChain.ValidatorRegistry = c3;
+
+      if (c1 && c2 && addresses.LandTitleNFT && addresses.LandRegistry) {
+        try {
+          const nftContract = new ethers.Contract(
+            addresses.LandTitleNFT,
+            [
+              'function REGISTRY_ROLE() view returns (bytes32)',
+              'function GOVERNOR_ROLE() view returns (bytes32)',
+              'function hasRole(bytes32 role, address account) view returns (bool)',
+            ],
+            provider,
+          );
+          const [regRole, govRole] = await withTimeout(
+            Promise.all([nftContract.REGISTRY_ROLE(), nftContract.GOVERNOR_ROLE()]),
+            2500,
+          );
+          const [hasReg, hasGov] = await withTimeout(
+            Promise.all([
+              nftContract.hasRole(regRole, addresses.LandRegistry),
+              nftContract.hasRole(govRole, addresses.LandRegistry),
+            ]),
+            2500,
+          );
+          registryRoleGranted = Boolean(hasReg);
+          governorRoleGranted = Boolean(hasGov);
+        } catch {
+          // Non-fatal role check failure
+        }
+      }
     } catch {
       rpcConnected = false;
     }
   }
+
+  const explorerUrl =
+    chainId === 137 ? 'https://polygonscan.com' : POLYGON_AMOY_PUBLIC_CONFIG.explorerUrl;
 
   return NextResponse.json({
     mode:
@@ -141,22 +176,28 @@ export async function GET() {
           ? 'LIVE_POLYGON_ONCHAIN'
           : 'LIVE_BESU_ONCHAIN'
         : 'WEB3_CRYPTO_LEDGER',
-    targetNetwork: 'polygon',
+    targetNetwork: chainId === 137 ? 'polygon' : 'polygon_amoy',
+    explorerUrl,
     rpcConfigured: Boolean(rpcUrl),
     rpcConnected,
     blockNumber,
     chainId,
+    roleStatus: {
+      registryRoleGranted,
+      governorRoleGranted,
+      ready: Boolean(registryRoleGranted && governorRoleGranted),
+    },
     contracts: [
       {
         name: 'LandToken',
-        standard: 'ERC-20 Settlement Token',
+        standard: 'ERC-20 Settlement Token (ALT)',
         compiled: checkArtifact('LandToken'),
         address: addresses.ERC20Token,
         deployedOnChain: deployedOnChain.ERC20Token,
       },
       {
         name: 'LandTitleNFT',
-        standard: 'ERC-721 + AccessControl',
+        standard: 'ERC-721 + AccessControl (LTN)',
         compiled: checkArtifact('LandTitleNFT'),
         address: addresses.LandTitleNFT,
         deployedOnChain: deployedOnChain.LandTitleNFT,

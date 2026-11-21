@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
+import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
 import { useWallet } from '../WalletContext';
 import type { LandApplicationRecord, SafeUser } from './types';
 
@@ -86,7 +87,7 @@ export default function ApplicationsPanel({
         payload.registrarNotes =
           actionNotes.trim() ||
           (action === 'APPROVE_AND_MINT'
-            ? 'Approved by Registrar for Besu ERC-721 title minting.'
+            ? 'Approved by Registrar for Polygon ERC-721 title minting.'
             : 'Rejected during statutory review.');
 
         if (action === 'APPROVE_AND_MINT' && wallet.isConnected && signWithMetaMask) {
@@ -493,8 +494,18 @@ export default function ApplicationsPanel({
                   {selected.legalNotes && <span className="block mt-0.5">{selected.legalNotes}</span>}
                 </div>
                 {selected.txHash && (
-                  <div className="text-xs font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 break-all">
-                    Besu Tx: {selected.txHash}
+                  <div className="text-xs font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 break-all flex flex-wrap items-center justify-between gap-2">
+                    <span>Polygon Tx: {selected.txHash}</span>
+                    {/^0x[0-9a-fA-F]{64}$/.test(selected.txHash) && (
+                      <a
+                        href={getPolygonExplorerTxUrl(selected.txHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-sans font-semibold underline shrink-0"
+                      >
+                        View on Polygonscan →
+                      </a>
+                    )}
                   </div>
                 )}
               </div>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useWallet } from '../WalletContext';
+import { grantLandRegistryRolesOnPolygon } from '../../lib/metamask';
+import { getPolygonExplorerAddressUrl } from '../../lib/polygon-config';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
 
 interface ContractStatusItem {
@@ -13,11 +15,18 @@ interface ContractStatusItem {
 }
 
 interface BlockchainStatusPayload {
-  mode: 'LIVE_BESU_ONCHAIN' | 'WEB3_CRYPTO_LEDGER';
+  mode: 'LIVE_POLYGON_ONCHAIN' | 'LIVE_BESU_ONCHAIN' | 'WEB3_CRYPTO_LEDGER';
+  targetNetwork?: string;
+  explorerUrl?: string;
   rpcConfigured: boolean;
   rpcConnected: boolean;
   blockNumber: number | null;
   chainId: number | null;
+  roleStatus?: {
+    registryRoleGranted: boolean | null;
+    governorRoleGranted: boolean | null;
+    ready: boolean;
+  };
   contracts: ContractStatusItem[];
 }
 
@@ -46,9 +55,20 @@ export default function TitlesAndGovernancePanel({
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [chainStatus, setChainStatus] = useState<BlockchainStatusPayload | null>(null);
 
+  const refreshChainStatus = async () => {
+    try {
+      const res = await fetch('/api/blockchain/status', { cache: 'no-store' });
+      if (res.ok) {
+        setChainStatus((await res.json()) as BlockchainStatusPayload);
+      }
+    } catch {
+      // Ignore transient network errors
+    }
+  };
+
   useEffect(() => {
     let active = true;
-    fetch('/api/blockchain/status')
+    fetch('/api/blockchain/status', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (active && data) setChainStatus(data as BlockchainStatusPayload);
@@ -58,6 +78,36 @@ export default function TitlesAndGovernancePanel({
       active = false;
     };
   }, []);
+
+  const handleGrantRegistryRoles = async () => {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      let activeProvider = wallet.provider;
+      let activeAddr = wallet.address;
+      if (!activeProvider || !activeAddr) {
+        const connected = await wallet.connect('any');
+        if (!connected) {
+          throw new Error('Connect the Admin deployer wallet first to grant LandRegistry roles.');
+        }
+        return;
+      }
+      const res = await grantLandRegistryRolesOnPolygon(activeProvider, activeAddr);
+      setFeedback({
+        type: 'ok',
+        text: `Role authorization submitted to Polygon (${[res.registryTxHash, res.governorTxHash].filter(Boolean).join(', ') || 'already active'}). Refreshing status...`,
+      });
+      await new Promise((r) => setTimeout(r, 3500));
+      await refreshChainStatus();
+    } catch (err) {
+      setFeedback({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Unable to grant LandRegistry roles',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleTransfer = async (bypassAttempt = false) => {
     setBusy(true);
@@ -174,36 +224,60 @@ export default function TitlesAndGovernancePanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                Smart Contracts &amp; Blockchain Ledger Status
+                Smart Contracts &amp; Polygon Network Status
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {chainStatus.rpcConnected
-                  ? `Connected to EVM RPC (Chain ID ${chainStatus.chainId} · Block #${chainStatus.blockNumber})`
-                  : 'No live Besu JSON-RPC node connected in this runtime — running Web3 ECDSA cryptographic ledger with compiled Solidity contracts ready for Besu deployment.'}
+                  ? `Connected to ${chainStatus.chainId === 137 ? 'Polygon Mainnet' : chainStatus.chainId === 80002 ? 'Polygon Amoy Testnet' : 'EVM RPC'} (Chain ID ${chainStatus.chainId} · Block #${chainStatus.blockNumber?.toLocaleString()})`
+                  : 'Running Web3 ECDSA cryptographic ledger with configured Polygon smart contracts.'}
               </p>
             </div>
             <span
               className={`px-2.5 py-1 text-[11px] font-mono font-semibold border rounded ${
-                chainStatus.mode === 'LIVE_BESU_ONCHAIN'
+                chainStatus.mode === 'LIVE_POLYGON_ONCHAIN' || chainStatus.mode === 'LIVE_BESU_ONCHAIN'
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   : 'bg-amber-50 text-amber-900 border-amber-200'
               }`}
             >
-              {chainStatus.mode === 'LIVE_BESU_ONCHAIN'
+              {chainStatus.mode === 'LIVE_POLYGON_ONCHAIN'
+                ? 'LIVE POLYGON ON-CHAIN'
+                : chainStatus.mode === 'LIVE_BESU_ONCHAIN'
                 ? 'LIVE BESU ON-CHAIN'
                 : 'CRYPTO LEDGER + COMPILED CONTRACTS'}
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+
+          {chainStatus.roleStatus &&
+            chainStatus.roleStatus.registryRoleGranted === false && (
+              <div className="p-3 rounded-md bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950">
+                <div>
+                  <span className="font-semibold">Action Recommended:</span> Grant{' '}
+                  <code className="font-mono">REGISTRY_ROLE</code> &amp;{' '}
+                  <code className="font-mono">GOVERNOR_ROLE</code> on{' '}
+                  <code className="font-mono">LandTitleNFT</code> to{' '}
+                  <code className="font-mono">LandRegistry</code> so on-chain minting and transfers succeed.
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleGrantRegistryRoles()}
+                  className="px-3 py-1.5 rounded bg-amber-900 text-white font-semibold hover:bg-amber-950 disabled:opacity-50 whitespace-nowrap shrink-0"
+                >
+                  Grant Roles via Admin Wallet
+                </button>
+              </div>
+            )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             {chainStatus.contracts.map((c) => (
               <div
                 key={c.name}
-                className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-1"
+                className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-1 min-w-0"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono font-semibold text-slate-900">{c.name}.sol</span>
                   <span
-                    className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
+                    className={`font-mono text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
                       c.deployedOnChain
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                         : c.compiled
@@ -215,9 +289,21 @@ export default function TitlesAndGovernancePanel({
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-500">{c.standard}</div>
-                <div className="font-mono text-[10px] text-slate-600 truncate">
-                  {c.address ? `Address: ${c.address}` : 'Awaiting Besu deployment address'}
-                </div>
+                {c.address ? (
+                  <a
+                    href={getPolygonExplorerAddressUrl(c.address, chainStatus.chainId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block font-mono text-[10px] text-emerald-700 hover:underline truncate"
+                    title={c.address}
+                  >
+                    {c.address}
+                  </a>
+                ) : (
+                  <div className="font-mono text-[10px] text-slate-600 truncate">
+                    Awaiting deployment address
+                  </div>
+                )}
               </div>
             ))}
           </div>

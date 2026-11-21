@@ -7,6 +7,9 @@ import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
 import OsmParcelMap from '../../components/map/OsmParcelMap';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
+import { useWallet } from '../../components/WalletContext';
+import { grantLandRegistryRolesOnPolygon } from '../../lib/metamask';
+import { getPolygonExplorerAddressUrl } from '../../lib/polygon-config';
 import type {
   AuditLogEntry,
   DigitalLandTitle,
@@ -15,6 +18,24 @@ import type {
   RevocationGround,
   SafeUser,
 } from '../../components/dashboard/types';
+
+interface AdminChainStatus {
+  mode: string;
+  rpcConnected: boolean;
+  blockNumber: number | null;
+  chainId: number | null;
+  roleStatus?: {
+    registryRoleGranted: boolean | null;
+    governorRoleGranted: boolean | null;
+    ready: boolean;
+  };
+  contracts: Array<{
+    name: string;
+    standard: string;
+    address: string | null;
+    deployedOnChain: boolean;
+  }>;
+}
 
 type AdminTab = 'pending' | 'active' | 'revoked' | 'audit' | 'users';
 
@@ -63,6 +84,7 @@ interface AdminOverviewResponse {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const wallet = useWallet();
   const [user, setUser] = useState<SafeUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>('pending');
@@ -75,6 +97,8 @@ export default function AdminDashboardPage() {
   const [titles, setTitles] = useState<DigitalLandTitle[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [usersList, setUsersList] = useState<SafeUser[]>([]);
+  const [chainStatus, setChainStatus] = useState<AdminChainStatus | null>(null);
+  const [roleBusy, setRoleBusy] = useState(false);
   const [stats, setStats] = useState({
     pendingCount: 0,
     activeCount: 0,
@@ -103,7 +127,7 @@ export default function AdminDashboardPage() {
   const loadAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const [overviewRes, usersRes] = await Promise.all([
+      const [overviewRes, usersRes, chainRes] = await Promise.all([
         fetch('/api/admin/listings', {
           cache: 'no-store',
           credentials: 'include',
@@ -114,7 +138,12 @@ export default function AdminDashboardPage() {
           credentials: 'include',
           headers: getAdminHeaders(),
         }),
+        fetch('/api/blockchain/status', { cache: 'no-store' }),
       ]);
+
+      if (chainRes.ok) {
+        setChainStatus((await chainRes.json()) as AdminChainStatus);
+      }
 
       if (overviewRes.status === 401 || overviewRes.status === 403) {
         clearAdminToken();
@@ -358,6 +387,31 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleGrantPolygonRoles = async () => {
+    setRoleBusy(true);
+    setFeedback(null);
+    try {
+      if (!wallet.provider || !wallet.address) {
+        await wallet.connect('any');
+        return;
+      }
+      const res = await grantLandRegistryRolesOnPolygon(wallet.provider, wallet.address);
+      setFeedback({
+        type: 'ok',
+        text: `LandRegistry roles authorized on Polygon Amoy (${[res.registryTxHash, res.governorTxHash].filter(Boolean).join(', ') || 'already active'}).`,
+      });
+      await new Promise((r) => setTimeout(r, 3500));
+      await loadAdminData();
+    } catch (err) {
+      setFeedback({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Unable to grant LandRegistry roles',
+      });
+    } finally {
+      setRoleBusy(false);
+    }
+  };
+
   if (!authChecked || !user) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
@@ -441,6 +495,85 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </section>
+
+        {chainStatus && (
+          <section className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  Polygon Smart Contracts ({chainStatus.chainId === 137 ? 'Mainnet 137' : 'Amoy Testnet 80002'})
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {chainStatus.rpcConnected
+                    ? `Live RPC connected · Block #${chainStatus.blockNumber?.toLocaleString()}`
+                    : 'Configured Polygon contract addresses'}
+                </p>
+              </div>
+              <span
+                className={`px-2.5 py-1 text-[11px] font-mono font-semibold border rounded ${
+                  chainStatus.mode === 'LIVE_POLYGON_ONCHAIN'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-amber-50 text-amber-900 border-amber-200'
+                }`}
+              >
+                {chainStatus.mode}
+              </span>
+            </div>
+
+            {chainStatus.roleStatus &&
+              chainStatus.roleStatus.registryRoleGranted === false && (
+                <div className="p-3 rounded-md bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950">
+                  <div>
+                    <span className="font-semibold">One-time contract setup needed:</span> Grant{' '}
+                    <code className="font-mono">REGISTRY_ROLE</code> &amp;{' '}
+                    <code className="font-mono">GOVERNOR_ROLE</code> on{' '}
+                    <code className="font-mono">LandTitleNFT</code> to{' '}
+                    <code className="font-mono">LandRegistry</code> using the deployer wallet.
+                  </div>
+                  <button
+                    type="button"
+                    disabled={roleBusy}
+                    onClick={() => void handleGrantPolygonRoles()}
+                    className="px-3 py-1.5 rounded bg-amber-900 text-white font-semibold hover:bg-amber-950 disabled:opacity-50 whitespace-nowrap shrink-0"
+                  >
+                    {roleBusy ? 'Sending...' : wallet.isConnected ? 'Grant Roles Now' : 'Connect Deployer Wallet'}
+                  </button>
+                </div>
+              )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+              {chainStatus.contracts.map((c) => (
+                <div
+                  key={c.name}
+                  className="p-2.5 rounded-md bg-slate-50 border border-slate-200 min-w-0 space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="font-mono font-semibold text-slate-900">{c.name}</span>
+                    <span
+                      className={`font-mono text-[10px] px-1.5 py-0.5 rounded border ${
+                        c.deployedOnChain
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-300'
+                      }`}
+                    >
+                      {c.deployedOnChain ? 'LIVE' : 'PENDING'}
+                    </span>
+                  </div>
+                  {c.address && (
+                    <a
+                      href={getPolygonExplorerAddressUrl(c.address, chainStatus.chainId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block font-mono text-[10px] text-emerald-700 hover:underline truncate"
+                    >
+                      {c.address}
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {feedback && (
           <div

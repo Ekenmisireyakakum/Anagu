@@ -39,7 +39,7 @@ const config: HardhatUserConfig = {
     },
     // Polygon Amoy Testnet (Chain ID 80002)
     polygon_amoy: {
-      url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology/",
+      url: process.env.POLYGON_AMOY_RPC_URL || "https://polygon-amoy-bor-rpc.publicnode.com",
       chainId: 80002,
       accounts: process.env.DEPLOYER_PRIVATE_KEY
         ? [process.env.DEPLOYER_PRIVATE_KEY]
