@@ -8,8 +8,11 @@ import SiteFooter from '../../components/SiteFooter';
 import OsmParcelMap from '../../components/map/OsmParcelMap';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
 import { useWallet } from '../../components/WalletContext';
-import { grantLandRegistryRolesOnPolygon } from '../../lib/metamask';
-import { getPolygonExplorerAddressUrl } from '../../lib/polygon-config';
+import {
+  distributeLandTokensOnPolygon,
+  grantLandRegistryRolesOnPolygon,
+} from '../../lib/metamask';
+import { getPolygonExplorerAddressUrl, getPolygonExplorerTxUrl } from '../../lib/polygon-config';
 import type {
   AuditLogEntry,
   DigitalLandTitle,
@@ -99,6 +102,9 @@ export default function AdminDashboardPage() {
   const [usersList, setUsersList] = useState<SafeUser[]>([]);
   const [chainStatus, setChainStatus] = useState<AdminChainStatus | null>(null);
   const [roleBusy, setRoleBusy] = useState(false);
+  const [altRecipient, setAltRecipient] = useState('');
+  const [altAmount, setAltAmount] = useState('100000');
+  const [altDistributeBusy, setAltDistributeBusy] = useState(false);
   const [stats, setStats] = useState({
     pendingCount: 0,
     activeCount: 0,
@@ -412,6 +418,38 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleDistributeAltTokens = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAltDistributeBusy(true);
+    setFeedback(null);
+    try {
+      if (!wallet.provider || !wallet.address) {
+        await wallet.connect('any');
+        return;
+      }
+      const res = await distributeLandTokensOnPolygon(
+        wallet.provider,
+        wallet.address,
+        altRecipient.trim(),
+        altAmount.trim(),
+      );
+      setFeedback({
+        type: 'ok',
+        text: `Successfully ${res.method === 'mint' ? 'minted' : 'transferred'} ${Number(
+          altAmount,
+        ).toLocaleString('en-US')} ALT on Polygon Amoy to ${altRecipient.trim()} (Tx: ${res.txHash} · ${getPolygonExplorerTxUrl(res.txHash, 80002)}).`,
+      });
+      await wallet.refreshBalance();
+    } catch (err) {
+      setFeedback({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Unable to send ALT tokens',
+      });
+    } finally {
+      setAltDistributeBusy(false);
+    }
+  };
+
   if (!authChecked || !user) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
@@ -572,6 +610,48 @@ export default function AdminDashboardPage() {
                 </div>
               ))}
             </div>
+
+            <form
+              onSubmit={handleDistributeAltTokens}
+              className="pt-3 border-t border-slate-200 flex flex-col lg:flex-row lg:items-end gap-3 text-xs"
+            >
+              <div className="flex-1 min-w-0">
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Treasury ALT Distributor — Fund Buyer Wallet (Polygon ERC-20)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={altRecipient}
+                  onChange={(e) => setAltRecipient(e.target.value)}
+                  placeholder="Buyer 0x... wallet address (or click Fund ALT in Users & Roles)"
+                  className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+              </div>
+              <div className="w-full lg:w-40 shrink-0">
+                <label className="block font-medium text-slate-700 mb-1">Amount (ALT)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step="any"
+                  required
+                  value={altAmount}
+                  onChange={(e) => setAltAmount(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={altDistributeBusy}
+                className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap shrink-0"
+              >
+                {altDistributeBusy
+                  ? 'Sending ALT...'
+                  : wallet.isConnected
+                  ? 'Mint / Send ALT on Polygon'
+                  : 'Connect Treasury Wallet'}
+              </button>
+            </form>
           </section>
         )}
 
@@ -1200,6 +1280,16 @@ export default function AdminDashboardPage() {
             auditLogs={auditLogs}
             usersList={usersList}
             onRefresh={loadAdminData}
+            onFundWallet={(walletAddr, userName) => {
+              setAltRecipient(walletAddr);
+              setFeedback({
+                type: 'ok',
+                text: `Loaded ${userName}'s wallet (${walletAddr}) into the Treasury ALT Distributor above.`,
+              });
+              if (typeof window !== 'undefined') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
           />
         )}
       </main>

@@ -25,3 +25,19 @@
     font-size: 10px;
   }
 }
+
+@media print {
+  body.anagu-printing-certificate > *:not(.anagu-certificate-print-portal) {
+    display: none !important;
+  }
+
+  body.anagu-printing-certificate .anagu-certificate-print-portal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+}
+

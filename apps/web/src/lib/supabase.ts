@@ -11,6 +11,19 @@ import type {
   UserAccount,
 } from './anagu-store';
 
+const SEEDED_LISTING_IDS = [
+  '33333333-3333-4333-8333-333333333301',
+  '33333333-3333-4333-8333-333333333302',
+  '33333333-3333-4333-8333-333333333303',
+  '33333333-3333-4333-8333-333333333304',
+  '33333333-3333-4333-8333-333333333305',
+  '33333333-3333-4333-8333-333333333306',
+  '5ddfa9f7-9468-4e3d-bf67-061f74ca3d36',
+  'c8030561-ac00-4c2e-b0eb-ace152864bce',
+  '06f561f6-b23a-41e2-9ecd-774e7dfa9f0e',
+];
+const SEEDED_LISTING_ID_SET = new Set(SEEDED_LISTING_IDS);
+
 export interface SupabaseStoreShape {
   users: UserAccount[];
   applications: LandApplicationRecord[];
@@ -309,9 +322,13 @@ export async function hydrateStoreFromSupabase(
       }));
 
       const hasCountersMeta = Boolean(metaRes.data?.some((row) => row.key === 'counters'));
-      if (!hasCountersMeta && (!listingsRes.data || listingsRes.data.length === 0)) {
+      if (
+        !hasCountersMeta &&
+        (!appsRes.data || appsRes.data.length === 0) &&
+        (!titlesRes.data || titlesRes.data.length === 0)
+      ) {
         // First-time boot after running schema.sql: keep DB-inserted users (e.g. admin)
-        // and backfill any missing initial registry users, listings, applications, and titles.
+        // and backfill any missing initial registry users, applications, and titles.
         const dbEmails = new Set(dbUsers.map((u) => u.email.toLowerCase()));
         const missingSeedUsers = store.users.filter((u) => !dbEmails.has(u.email.toLowerCase()));
         store.users = [...dbUsers, ...missingSeedUsers];
@@ -328,7 +345,14 @@ export async function hydrateStoreFromSupabase(
         store.titles = titlesRes.data.map((r) => r.data as DigitalLandTitle);
       }
       if (listingsRes.data && listingsRes.data.length > 0) {
-        store.listings = listingsRes.data.map((r) => r.data as LandListingRecord);
+        const allDbListings = listingsRes.data.map((r) => r.data as LandListingRecord);
+        const hadSeeded = allDbListings.some((l) => SEEDED_LISTING_ID_SET.has(l.id));
+        store.listings = allDbListings.filter((l) => !SEEDED_LISTING_ID_SET.has(l.id));
+        if (hadSeeded) {
+          void client.from('anagu_listings').delete().in('id', SEEDED_LISTING_IDS);
+        }
+      } else {
+        store.listings = [];
       }
       if (purchasesRes.data) {
         store.purchases = purchasesRes.data.map((r) => r.data as LandPurchaseRecord);

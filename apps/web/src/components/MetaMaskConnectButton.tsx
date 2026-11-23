@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { getAuthHeaders } from '../lib/client-auth';
 import { formatCompactTokenBalance, watchLandTokenInWallet } from '../lib/metamask';
+import { POLYGON_AMOY_PUBLIC_CONFIG } from '../lib/polygon-config';
 import { useWallet } from './WalletContext';
 
 export default function MetaMaskConnectButton({
@@ -15,6 +17,10 @@ export default function MetaMaskConnectButton({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [copiedAddr, setCopiedAddr] = useState(false);
   const [tokenAddedMsg, setTokenAddedMsg] = useState<string | null>(null);
+  const [showFundGuide, setShowFundGuide] = useState(false);
+  const [faucetConfigured, setFaucetConfigured] = useState<boolean | null>(null);
+  const [faucetBusy, setFaucetBusy] = useState(false);
+  const [faucetStatusMsg, setFaucetStatusMsg] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -53,6 +59,43 @@ export default function MetaMaskConnectButton({
     const ok = await watchLandTokenInWallet(wallet.provider);
     setTokenAddedMsg(ok ? 'ALT added to wallet' : 'Prompt sent / open wallet modal');
     setTimeout(() => setTokenAddedMsg(null), 2600);
+  };
+
+  useEffect(() => {
+    if (!popoverOpen || faucetConfigured !== null) return;
+    fetch('/api/wallet/faucet', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setFaucetConfigured(Boolean(data.configured));
+      })
+      .catch(() => {});
+  }, [popoverOpen, faucetConfigured]);
+
+  const handleClaimStarterAlt = async () => {
+    if (!wallet.address) return;
+    setFaucetBusy(true);
+    setFaucetStatusMsg(null);
+    try {
+      const res = await fetch('/api/wallet/faucet', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ recipientAddress: wallet.address, amountAlt: 100000 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFaucetStatusMsg(data.message || 'Unable to claim starter ALT tokens.');
+        setShowFundGuide(true);
+        return;
+      }
+      setFaucetStatusMsg(`Sent ${Number(data.amountAlt || 100000).toLocaleString()} ALT to your wallet!`);
+      await wallet.refreshBalance();
+    } catch {
+      setFaucetStatusMsg('Unable to reach ALT treasury endpoint.');
+      setShowFundGuide(true);
+    } finally {
+      setFaucetBusy(false);
+    }
   };
 
   if (!wallet.isConnected || !wallet.address) {
@@ -171,11 +214,56 @@ export default function MetaMaskConnectButton({
           </div>
 
           <div className="grid grid-cols-1 gap-2">
-            <div className="p-2.5 rounded border border-emerald-200 bg-emerald-50/60">
-              <div className="text-[11px] text-slate-600">ANAGU Token Balance (Polygon ERC-20)</div>
-              <div className="mt-0.5 font-mono text-sm font-bold text-emerald-900 tabular-nums break-words">
+            <div className="p-2.5 rounded border border-emerald-200 bg-emerald-50/60 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-600">ANAGU Token Balance (Polygon ERC-20)</span>
+                <button
+                  type="button"
+                  onClick={() => setShowFundGuide((prev) => !prev)}
+                  className="text-[11px] font-semibold text-emerald-800 hover:underline shrink-0"
+                >
+                  {showFundGuide ? 'Hide Guide' : 'How to Fund ALT?'}
+                </button>
+              </div>
+              <div className="font-mono text-sm font-bold text-emerald-900 tabular-nums break-words">
                 {fullAlt} ALT
               </div>
+              {(showFundGuide || Number.parseFloat(fullAlt.replace(/,/g, '')) <= 0) && (
+                <div className="pt-1.5 border-t border-emerald-200/70 text-[11px] text-slate-700 space-y-1.5 leading-snug">
+                  <p>
+                    <strong className="text-slate-900">How ALT funding works:</strong>{' '}
+                    <code className="font-mono text-[10px]">ALT</code> is ANAGU&apos;s Polygon Amoy ERC-20 token (
+                    <code className="font-mono text-[10px]">
+                      {POLYGON_AMOY_PUBLIC_CONFIG.contracts.ERC20Token.slice(0, 8)}...
+                      {POLYGON_AMOY_PUBLIC_CONFIG.contracts.ERC20Token.slice(-4)}
+                    </code>
+                    ). New wallets start at <strong>0.00 ALT</strong> until funded by the ANAGU Treasury/Admin.
+                  </p>
+                  <p className="text-slate-600">
+                    Copy your address above for an Admin to mint/send ALT in the Admin Portal, or buy immediately on Access Land using zero-gas wallet signature or Registry Escrow.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    {faucetConfigured && (
+                      <button
+                        type="button"
+                        disabled={faucetBusy}
+                        onClick={() => void handleClaimStarterAlt()}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-700 rounded hover:bg-emerald-800 disabled:opacity-50"
+                      >
+                        {faucetBusy ? 'Sending ALT...' : 'Claim 100,000 ALT'}
+                      </button>
+                    )}
+                    <a
+                      href="https://faucet.polygon.technology/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-emerald-800 underline"
+                    >
+                      Get Free Test POL (Gas) ↗
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="p-2.5 rounded border border-slate-200 bg-slate-50">
               <div className="text-[11px] text-slate-600">Native Gas Balance</div>
@@ -191,6 +279,12 @@ export default function MetaMaskConnectButton({
                 )}
             </div>
           </div>
+
+          {faucetStatusMsg && (
+            <div className="text-[11px] font-medium text-slate-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 leading-snug">
+              {faucetStatusMsg}
+            </div>
+          )}
 
           {tokenAddedMsg && (
             <div className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5">

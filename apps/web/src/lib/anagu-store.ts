@@ -701,13 +701,11 @@ function initStore(): AnaguGlobalStore {
     updatedAt: now,
   };
 
-  const listings = buildSeedListings(users, [ikoyiParcel], ikoyiWkt, now);
-
   return {
     users,
     applications,
     titles: [initialTitle],
-    listings,
+    listings: [],
     purchases: [],
     mqttLogs,
     auditLogs,
@@ -726,227 +724,17 @@ function parcelGeometryToWkt(parcel: LandParcelRecord): string {
   return `POLYGON((${pairs}))`;
 }
 
-function buildSeedListings(
-  users: UserAccount[],
-  extraParcels: LandParcelRecord[],
-  ikoyiWkt: string,
-  createdAt: string,
-): LandListingRecord[] {
-  const allParcels = [...extraParcels, ...listParcels()];
-  const registrar = users[2] || users[0];
-  const citizen = users[0];
-
-  const byRef = (ref: string) => allParcels.find((p) => p.parcelNumber === ref);
-  const pVi2 = byRef('LG-VI-002');
-  const pLk1 = byRef('LG-LK-001');
-  const pIk1 = byRef('LG-IK-001');
-  const pYb1 = byRef('LG-YB-001');
-  const pSu1 = byRef('LG-SU-001');
-  const pIky = byRef('LG-IKY-012');
-
-  const result: LandListingRecord[] = [];
-
-  if (pVi2) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333301',
-      parcelId: pVi2.id,
-      parcelReference: pVi2.parcelNumber,
-      title: 'Victoria Island Waterfront Commercial Plot',
-      address: pVi2.address || '22 Ozumba Mbadiwe Avenue, Victoria Island',
-      lga: pVi2.lga || 'Eti-Osa',
-      state: pVi2.state,
-      areaSqm: pVi2.areaSqm || 1620.3,
-      wkt: parcelGeometryToWkt(pVi2),
-      zoning: 'Commercial',
-      priceNgn: 185_000_000,
-      priceEth: '0.0250',
-      sellerId: registrar.id,
-      sellerName: 'Lagos State Land Allocation Desk',
-      sellerAddress: registrar.walletAddress,
-      tokenId: null,
-      listingType: 'STATE_ALLOCATION',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_vi_waterfront.jpg',
-      description:
-        'Surveyed prime commercial frontage along Ozumba Mbadiwe Avenue with zero boundary overlap and instant ERC-721 title issuance upon acquisition.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  if (pLk1) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333302',
-      parcelId: pLk1.id,
-      parcelReference: pLk1.parcelNumber,
-      title: 'Lekki Phase 1 Admiralty Residential Plot',
-      address: pLk1.address || '10 Admiralty Way, Lekki Phase 1',
-      lga: pLk1.lga || 'Eti-Osa',
-      state: pLk1.state,
-      areaSqm: pLk1.areaSqm || 1710.2,
-      wkt: parcelGeometryToWkt(pLk1),
-      zoning: 'Residential',
-      priceNgn: 128_000_000,
-      priceEth: '0.0180',
-      sellerId: registrar.id,
-      sellerName: 'Lagos State Land Allocation Desk',
-      sellerAddress: registrar.walletAddress,
-      tokenId: null,
-      listingType: 'STATE_ALLOCATION',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_lekki_residential.jpg',
-      description:
-        'Corner residential estate plot in Lekki Phase 1 cleared by PostGIS boundary verification and LASRECCA institutional registry.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  if (pIk1) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333303',
-      parcelId: pIk1.id,
-      parcelReference: pIk1.parcelNumber,
-      title: 'Ikeja Central Corner Development Parcel',
-      address: pIk1.address || '5 Obafemi Awolowo Way, Ikeja',
-      lga: pIk1.lga || 'Ikeja',
-      state: pIk1.state,
-      areaSqm: pIk1.areaSqm || 1620.6,
-      wkt: parcelGeometryToWkt(pIk1),
-      zoning: 'Mixed-Use',
-      priceNgn: 96_000_000,
-      priceEth: '0.0140',
-      sellerId: registrar.id,
-      sellerName: 'Lagos State Land Allocation Desk',
-      sellerAddress: registrar.walletAddress,
-      tokenId: null,
-      listingType: 'STATE_ALLOCATION',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_ikeja_gra.jpg',
-      description:
-        'High-visibility mixed-use corridor plot near Alausa Secretariat with verified perimeter beacons and clean root of title.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  if (pIky) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333304',
-      parcelId: pIky.id,
-      parcelReference: pIky.parcelNumber,
-      title: 'Ikoyi Lagoon-Front Estate Parcel',
-      address: pIky.address || '12 Bourdillon Crescent, Ikoyi',
-      lga: pIky.lga || 'Eti-Osa',
-      state: pIky.state,
-      areaSqm: pIky.areaSqm || 1850.0,
-      wkt: ikoyiWkt,
-      zoning: 'Residential',
-      priceNgn: 240_000_000,
-      priceEth: '0.0320',
-      sellerId: registrar.id,
-      sellerName: 'Lagos State Land Allocation Desk',
-      sellerAddress: registrar.walletAddress,
-      tokenId: null,
-      listingType: 'STATE_ALLOCATION',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_ikoyi_commercial.jpg',
-      description:
-        'Low-density waterfront parcel off Bourdillon Crescent verified under WGS 84 cadastral coordinates and free of Section 28 encumbrances.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  if (pYb1) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333305',
-      parcelId: pYb1.id,
-      parcelReference: pYb1.parcelNumber,
-      title: 'Yaba Tech Corridor Mixed-Use Plot',
-      address: pYb1.address || '22 Herbert Macaulay Way, Yaba',
-      lga: pYb1.lga || 'Mainland',
-      state: pYb1.state,
-      areaSqm: pYb1.areaSqm || 1610.5,
-      wkt: parcelGeometryToWkt(pYb1),
-      zoning: 'Mixed-Use',
-      priceNgn: 64_000_000,
-      priceEth: '0.0095',
-      sellerId: registrar.id,
-      sellerName: 'Lagos State Land Allocation Desk',
-      sellerAddress: registrar.walletAddress,
-      tokenId: null,
-      listingType: 'STATE_ALLOCATION',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_lekki_residential.jpg',
-      description:
-        'Mainland commercial and residential development site adjacent to Herbert Macaulay Way with completed surveyor confirmation.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  if (pSu1) {
-    result.push({
-      id: '33333333-3333-4333-8333-333333333306',
-      parcelId: pSu1.id,
-      parcelReference: pSu1.parcelNumber,
-      title: 'Surulere Commercial Avenue Plot',
-      address: pSu1.address || '8 Bode Thomas Street, Surulere',
-      lga: pSu1.lga || 'Surulere',
-      state: pSu1.state,
-      areaSqm: pSu1.areaSqm || 1600.9,
-      wkt: parcelGeometryToWkt(pSu1),
-      zoning: 'Commercial',
-      priceNgn: 58_000_000,
-      priceEth: '0.0085',
-      sellerId: citizen.id,
-      sellerName: citizen.fullName,
-      sellerAddress: citizen.walletAddress,
-      tokenId: null,
-      listingType: 'VERIFIED_RESALE',
-      status: 'AVAILABLE',
-      imageUrl: '/images/parcel_ikeja_gra.jpg',
-      description:
-        'Cleared commercial plot on Bode Thomas Street with verified community attestation and zero competing registry claims.',
-      createdAt,
-      soldAt: null,
-      buyerId: null,
-      buyerName: null,
-      purchaseTxHash: null,
-    });
-  }
-
-  const rates = getCachedMarketRates();
-  return result.map((item) => {
-    const priceNgn = item.priceNgn;
-    const priceUsd = ngnToUsd(priceNgn, rates);
-    const priceEth = ngnToEth(priceNgn, rates);
-    return {
-      ...item,
-      verificationStatus: 'VERIFIED' as const,
-      priceAnchorCurrency: 'NGN' as const,
-      priceUsd,
-      priceNgn,
-      priceEth,
-    };
-  });
-}
+export const SEEDED_LISTING_IDS = new Set([
+  '33333333-3333-4333-8333-333333333301',
+  '33333333-3333-4333-8333-333333333302',
+  '33333333-3333-4333-8333-333333333303',
+  '33333333-3333-4333-8333-333333333304',
+  '33333333-3333-4333-8333-333333333305',
+  '33333333-3333-4333-8333-333333333306',
+  '5ddfa9f7-9468-4e3d-bf67-061f74ca3d36',
+  'c8030561-ac00-4c2e-b0eb-ace152864bce',
+  '06f561f6-b23a-41e2-9ecd-774e7dfa9f0e',
+]);
 
 const g = globalThis as typeof globalThis & { __anaguStore?: AnaguGlobalStore };
 export function getAnaguStore(): AnaguGlobalStore {
@@ -2539,12 +2327,9 @@ export function listLandListings(filters?: {
 }): LandListingRecord[] {
   const store = getAnaguStore();
   if (!store.listings) {
-    store.listings = buildSeedListings(
-      store.users,
-      store.extraParcels,
-      'POLYGON((3.4380 6.4540, 3.4394 6.4540, 3.4394 6.4530, 3.4380 6.4530, 3.4380 6.4540))',
-      new Date().toISOString(),
-    );
+    store.listings = [];
+  } else {
+    store.listings = store.listings.filter((item) => !SEEDED_LISTING_IDS.has(item.id));
   }
   if (!store.purchases) {
     store.purchases = [];

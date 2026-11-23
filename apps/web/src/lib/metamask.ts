@@ -73,6 +73,9 @@ export const ERC20_ABI = [
   'function balanceOf(address owner) external view returns (uint256)',
   'function transfer(address to, uint256 value) external returns (bool)',
   'function approve(address spender, uint256 value) external returns (bool)',
+  'function mint(address to, uint256 amount) external',
+  'function MINTER_ROLE() external view returns (bytes32)',
+  'function hasRole(bytes32 role, address account) external view returns (bool)',
 ];
 
 export const LAND_REGISTRY_ABI = [
@@ -972,7 +975,9 @@ export async function authorizeLandRegistryAction(
       ethers.isAddress(ERC20_TOKEN_ADDRESS) &&
       ethers.isAddress(params.sellerAddress)
     ) {
-      const tokenAmount = ethers.parseEther(params.priceEth || '1');
+      const altAmountStr =
+        params.priceUsd && params.priceUsd > 0 ? String(params.priceUsd) : params.priceEth || '1';
+      const tokenAmount = ethers.parseEther(altAmountStr);
       const { feasible, data } =
         activeChainId === BESU_CHAIN_ID
           ? {
@@ -1100,7 +1105,7 @@ export async function authorizeLandRegistryAction(
     ...('listingId' in params
       ? [
           `Listing ID: ${params.listingId}`,
-          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} ${ERC20_TOKEN_ADDRESS ? 'ALT' : 'POL'})`,
+          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD (${params.priceUsd.toLocaleString()} ALT) · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} POL)`,
           `Seller Settlement Wallet: ${params.sellerAddress}`,
         ]
       : []),
@@ -1197,4 +1202,73 @@ export async function grantLandRegistryRolesOnPolygon(
 
   return { registryTxHash, governorTxHash };
 }
+
+export async function distributeLandTokensOnPolygon(
+  provider: Eip1193Provider,
+  signerAddress: string,
+  recipientAddress: string,
+  amountAlt: string,
+): Promise<{ txHash: string; method: 'mint' | 'transfer' }> {
+  if (!ERC20_TOKEN_ADDRESS || !ethers.isAddress(ERC20_TOKEN_ADDRESS)) {
+    throw new Error('ANAGU Land Token (ALT) contract address is not configured.');
+  }
+  if (!ethers.isAddress(recipientAddress)) {
+    throw new Error('Enter a valid recipient EVM wallet address (0x...).');
+  }
+  const numericAmount = Number.parseFloat(amountAlt.trim());
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error('Enter a positive ALT token amount.');
+  }
+
+  await switchEvmChain(provider, POLYGON_CHAIN_ID);
+
+  const checksumSigner = await resolveActiveSignerAddress(provider, signerAddress);
+  const checksumRecipient = ethers.getAddress(recipientAddress);
+  const tokenAddress = ethers.getAddress(ERC20_TOKEN_ADDRESS);
+  const amountWei = ethers.parseEther(amountAlt.trim());
+
+  const readProvider = new ethers.JsonRpcProvider(POLYGON_RPC_URL, undefined, {
+    staticNetwork: true,
+  });
+  const tokenRead = new ethers.Contract(tokenAddress, ERC20_ABI, readProvider);
+
+  let hasMinterRole = false;
+  try {
+    const minterRole = (await tokenRead.MINTER_ROLE()) as string;
+    hasMinterRole = Boolean(await tokenRead.hasRole(minterRole, checksumSigner));
+  } catch {
+    hasMinterRole = false;
+  }
+
+  const tokenIface = new ethers.Interface(ERC20_ABI);
+  let method: 'mint' | 'transfer' = 'transfer';
+  let data: string;
+
+  if (hasMinterRole) {
+    method = 'mint';
+    data = tokenIface.encodeFunctionData('mint', [checksumRecipient, amountWei]);
+  } else {
+    const balanceWei = (await tokenRead.balanceOf(checksumSigner).catch(() => BigInt(0))) as bigint;
+    if (balanceWei < amountWei) {
+      throw new Error(
+        `Connected wallet ${checksumSigner.slice(0, 6)}...${checksumSigner.slice(-4)} neither holds MINTER_ROLE nor has enough ALT tokens (${ethers.formatEther(balanceWei)} ALT available). Connect the Treasury / Deployer wallet.`,
+      );
+    }
+    data = tokenIface.encodeFunctionData('transfer', [checksumRecipient, amountWei]);
+  }
+
+  const txHash = (await provider.request({
+    method: 'eth_sendTransaction',
+    params: [
+      {
+        from: checksumSigner,
+        to: tokenAddress,
+        data,
+      },
+    ],
+  })) as string;
+
+  return { txHash, method };
+}
+
 

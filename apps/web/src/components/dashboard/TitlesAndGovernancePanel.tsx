@@ -5,6 +5,8 @@ import { useWallet } from '../WalletContext';
 import { grantLandRegistryRolesOnPolygon } from '../../lib/metamask';
 import { getPolygonExplorerAddressUrl } from '../../lib/polygon-config';
 import { getAuthHeaders } from '../../lib/client-auth';
+import { downloadCertificatePdf } from '../../lib/certificate-pdf';
+import TitleCertificateModal from '../TitleCertificateModal';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
 
 interface ContractStatusItem {
@@ -55,6 +57,23 @@ export default function TitlesAndGovernancePanel({
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [chainStatus, setChainStatus] = useState<BlockchainStatusPayload | null>(null);
+  const [certificateModalTitle, setCertificateModalTitle] = useState<DigitalLandTitle | null>(null);
+  const [downloadingPdfTokenId, setDownloadingPdfTokenId] = useState<number | null>(null);
+
+  const handleQuickDownloadPdf = async (title: DigitalLandTitle) => {
+    setDownloadingPdfTokenId(title.tokenId);
+    setFeedback(null);
+    try {
+      await downloadCertificatePdf(title);
+    } catch (err) {
+      setFeedback({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Unable to generate PDF certificate',
+      });
+    } finally {
+      setDownloadingPdfTokenId(null);
+    }
+  };
 
   const refreshChainStatus = async () => {
     try {
@@ -502,9 +521,28 @@ export default function TitlesAndGovernancePanel({
                       {title.address} · {title.lga}, {title.state} · {title.areaSqm.toLocaleString()} m²
                     </p>
                   </div>
-                  <div className="sm:text-right text-xs font-mono text-slate-600 tabular-nums shrink-0">
-                    <div>Block #{title.blockNumber}</div>
-                    <div>Owner: {title.ownerName}</div>
+                  <div className="sm:text-right text-xs font-mono text-slate-600 tabular-nums shrink-0 space-y-2">
+                    <div>
+                      <div>Block #{title.blockNumber}</div>
+                      <div>Owner: {title.ownerName}</div>
+                    </div>
+                    <div className="flex flex-wrap sm:justify-end gap-2 font-sans">
+                      <button
+                        type="button"
+                        onClick={() => setCertificateModalTitle(title)}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 whitespace-nowrap"
+                      >
+                        View Certificate
+                      </button>
+                      <button
+                        type="button"
+                        disabled={downloadingPdfTokenId === title.tokenId}
+                        onClick={() => void handleQuickDownloadPdf(title)}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {downloadingPdfTokenId === title.tokenId ? 'Preparing PDF...' : 'Download PDF'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -545,6 +583,11 @@ export default function TitlesAndGovernancePanel({
           </div>
         )}
       </div>
+
+      <TitleCertificateModal
+        title={certificateModalTitle}
+        onClose={() => setCertificateModalTitle(null)}
+      />
     </div>
   );
 }

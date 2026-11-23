@@ -17,6 +17,8 @@ import {
 } from '../../lib/metamask';
 import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
 import { getAuthHeaders } from '../../lib/client-auth';
+import { downloadCertificatePdf } from '../../lib/certificate-pdf';
+import TitleCertificateModal from '../TitleCertificateModal';
 import { useWallet } from '../WalletContext';
 import type {
   DigitalLandTitle,
@@ -56,6 +58,9 @@ export default function MarketplaceClient({
   const [listings, setListings] = useState<LandListingRecord[]>([]);
   const [purchases, setPurchases] = useState<LandPurchaseRecord[]>([]);
   const [ownedTitles, setOwnedTitles] = useState<DigitalLandTitle[]>([]);
+  const [titlesByTokenId, setTitlesByTokenId] = useState<Record<number, DigitalLandTitle>>({});
+  const [certificateModalTitle, setCertificateModalTitle] = useState<DigitalLandTitle | null>(null);
+  const [downloadingTokenId, setDownloadingTokenId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,6 +84,10 @@ export default function MarketplaceClient({
   const [marketRates, setMarketRates] = useState<MarketRates>(FALLBACK_MARKET_RATES);
   const [refreshingRates, setRefreshingRates] = useState(false);
   const [userAccountBalance, setUserAccountBalance] = useState<AnaguBalanceResult | null>(null);
+  const [showAltFundHelp, setShowAltFundHelp] = useState(false);
+  const [faucetConfigured, setFaucetConfigured] = useState<boolean>(false);
+  const [faucetClaimBusy, setFaucetClaimBusy] = useState(false);
+  const [copiedWalletAddr, setCopiedWalletAddr] = useState(false);
 
   // List owned land form
   const [showListForm, setShowListForm] = useState(false);
@@ -95,14 +104,19 @@ export default function MarketplaceClient({
     setLoading(true);
     try {
       const mktUrl = forceRefreshRates ? '/api/marketplace?refreshRates=1' : '/api/marketplace';
-      const [mktRes, meRes] = await Promise.all([
+      const [mktRes, meRes, faucetRes] = await Promise.all([
         fetch(mktUrl, { credentials: 'include', headers: getAuthHeaders() }),
         fetch('/api/auth/me?optional=1', {
           cache: 'no-store',
           credentials: 'include',
           headers: getAuthHeaders(),
         }),
+        fetch('/api/wallet/faucet', { cache: 'no-store' }).catch(() => null),
       ]);
+      if (faucetRes && faucetRes.ok) {
+        const fData = await faucetRes.json().catch(() => null);
+        if (fData) setFaucetConfigured(Boolean(fData.configured));
+      }
       if (mktRes.ok) {
         const data = await mktRes.json();
         const items: LandListingRecord[] = data.listings || [];
@@ -139,6 +153,11 @@ export default function MarketplaceClient({
           });
           if (titlesRes.ok) {
             const allTitles: DigitalLandTitle[] = await titlesRes.json();
+            const map: Record<number, DigitalLandTitle> = {};
+            for (const item of allTitles) {
+              map[item.tokenId] = item;
+            }
+            setTitlesByTokenId(map);
             const eligible = allTitles.filter(
               (t) =>
                 !t.isRevoked &&
@@ -154,10 +173,12 @@ export default function MarketplaceClient({
         } else {
           setUser(null);
           setOwnedTitles([]);
+          setTitlesByTokenId({});
         }
       } else {
         setUser(null);
         setOwnedTitles([]);
+        setTitlesByTokenId({});
       }
     } finally {
       setLoading(false);
@@ -244,6 +265,10 @@ export default function MarketplaceClient({
         title: DigitalLandTitle;
       };
 
+      setTitlesByTokenId((prev) => ({
+        ...prev,
+        [result.title.tokenId]: result.title,
+      }));
       setLatestReceipt({ purchase: result.purchase, title: result.title });
       setFeedback({
         type: 'ok',
@@ -257,6 +282,65 @@ export default function MarketplaceClient({
     },
     [loadData, onPurchased],
   );
+
+  const resolvePurchaseTitle = useCallback(
+    (purchase: LandPurchaseRecord): DigitalLandTitle => {
+      const existing = titlesByTokenId[purchase.tokenId];
+      if (existing) return existing;
+      const linkedListing = listings.find((l) => l.id === purchase.listingId);
+      return {
+        tokenId: purchase.tokenId,
+        applicationId: purchase.listingId,
+        parcelId: linkedListing?.parcelId || purchase.parcelReference,
+        parcelReference: purchase.parcelReference,
+        address: purchase.address,
+        lga: purchase.lga,
+        state: linkedListing?.state || 'Nigeria',
+        areaSqm: linkedListing?.areaSqm || 0,
+        ownerId: purchase.buyerId,
+        ownerName: purchase.buyerName,
+        ownerAddress: purchase.buyerWallet,
+        ownerReferenceHash: purchase.buyerId,
+        spatialHash: linkedListing?.parcelId || purchase.parcelReference,
+        documentHash: purchase.txHash,
+        txHash: purchase.txHash,
+        blockNumber: 0,
+        issuedAt: purchase.purchasedAt,
+        isRevoked: false,
+        revokedAt: null,
+        revocationGrounds: null,
+        revocationReference: null,
+        revocationJustification: null,
+        revokedByName: null,
+        ownershipHistory: [
+          {
+            fromAddress: linkedListing?.sellerAddress || 'ANAGU Registry',
+            toAddress: purchase.buyerWallet,
+            toName: purchase.buyerName,
+            txHash: purchase.txHash,
+            timestamp: purchase.purchasedAt,
+            action: 'TRANSFERRED',
+          },
+        ],
+      };
+    },
+    [listings, titlesByTokenId],
+  );
+
+  const handleQuickDownloadPdf = useCallback(async (title: DigitalLandTitle) => {
+    setDownloadingTokenId(title.tokenId);
+    setFeedback(null);
+    try {
+      await downloadCertificatePdf(title);
+    } catch (err) {
+      setFeedback({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Unable to export certificate PDF',
+      });
+    } finally {
+      setDownloadingTokenId(null);
+    }
+  }, []);
 
   const executeWalletPurchase = useCallback(
     async (
@@ -408,6 +492,46 @@ export default function MarketplaceClient({
       });
     } finally {
       setBuying(false);
+    }
+  };
+
+  const handleClaimFaucetAlt = async () => {
+    const targetAddr = wallet.address || user?.walletAddress;
+    if (!targetAddr) {
+      setFeedback({ type: 'err', text: 'Connect your Web3 wallet first so we know where to send ALT.' });
+      return;
+    }
+    setFaucetClaimBusy(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/wallet/faucet', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ recipientAddress: targetAddr, amountAlt: 100000 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setShowAltFundHelp(true);
+        setFeedback({
+          type: 'err',
+          text: data.message || 'Unable to claim starter ALT tokens.',
+        });
+        return;
+      }
+      setFeedback({
+        type: 'ok',
+        text: `Minted/Sent ${Number(data.amountAlt || 100000).toLocaleString()} ALT on Polygon Amoy to ${targetAddr.slice(0, 6)}...${targetAddr.slice(-4)}.`,
+      });
+      if (wallet.isConnected) {
+        await wallet.refreshBalance();
+      } else {
+        setUserAccountBalance(await fetchAnaguWalletBalance(targetAddr));
+      }
+    } catch {
+      setFeedback({ type: 'err', text: 'Unable to reach ALT treasury endpoint.' });
+    } finally {
+      setFaucetClaimBusy(false);
     }
   };
 
@@ -757,7 +881,38 @@ export default function MarketplaceClient({
       {/* Main Split Grid: Catalog Cards + Contiguous Purchase Module */}
       {loading && listings.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-lg p-10 text-sm text-slate-500">
-          Loading verified and unverified land parcels...
+          Loading land parcels...
+        </div>
+      ) : listings.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-lg p-8 sm:p-12 text-center space-y-4">
+          <p className="text-xs font-mono font-semibold uppercase tracking-wider text-emerald-700">
+            Access Land · Ready for User Parcels
+          </p>
+          <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+            No Land Parcels Listed Yet
+          </h2>
+          <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
+            Access Land starts empty with no pre-loaded parcels. Parcels appear here once a user adds a parcel via <strong>Register Land</strong> and it is approved or listed for acquisition.
+          </p>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+            {!embedded && (
+              <Link
+                href="/register-land"
+                className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors"
+              >
+                Register a Land Parcel →
+              </Link>
+            )}
+            {user && ownedTitles.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowListForm(true)}
+                className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 transition-colors"
+              >
+                List Your Title for Sale
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -765,7 +920,7 @@ export default function MarketplaceClient({
           <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
             {filteredListings.length === 0 ? (
               <div className="sm:col-span-2 bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-600">
-                No land parcels match your current filter. Reset filters to view all verified and unverified parcels.
+                No land parcels match your current filter. Reset filters to view all parcels.
               </div>
             ) : (
               filteredListings.map((item) => {
@@ -1050,7 +1205,37 @@ export default function MarketplaceClient({
                           )}
                         </div>
                       )}
-                      <div className="pt-2">
+                      <div className="pt-2 flex flex-wrap items-center gap-2.5">
+                        {selectedListing.tokenId !== null &&
+                          titlesByTokenId[selectedListing.tokenId] && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCertificateModalTitle(
+                                    titlesByTokenId[selectedListing.tokenId as number],
+                                  )
+                                }
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 whitespace-nowrap"
+                              >
+                                View / Print Certificate
+                              </button>
+                              <button
+                                type="button"
+                                disabled={downloadingTokenId === selectedListing.tokenId}
+                                onClick={() =>
+                                  void handleQuickDownloadPdf(
+                                    titlesByTokenId[selectedListing.tokenId as number],
+                                  )
+                                }
+                                className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {downloadingTokenId === selectedListing.tokenId
+                                  ? 'Preparing PDF...'
+                                  : 'Download PDF'}
+                              </button>
+                            </>
+                          )}
                         <Link
                           href="/dashboard?tab=titles"
                           className="text-xs font-semibold text-emerald-700 hover:underline"
@@ -1140,6 +1325,77 @@ export default function MarketplaceClient({
                           </button>
                         </div>
                       </div>
+
+                      {(() => {
+                        const activeAltRaw = wallet.isConnected
+                          ? wallet.balanceAlt ?? '0'
+                          : userAccountBalance?.anaguAlt ?? '0';
+                        const activeAltNum = Number.parseFloat(activeAltRaw.replace(/,/g, '')) || 0;
+                        const activeAddr = wallet.address || user?.walletAddress || '';
+                        if (!showAltFundHelp && activeAltNum > 0) return null;
+                        return (
+                          <div className="p-3 rounded-md bg-amber-50/80 border border-amber-200 text-xs text-slate-800 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-semibold text-amber-950">
+                                {activeAltNum <= 0
+                                  ? 'Wallet shows 0.00 ALT — How funding & buying works'
+                                  : 'How to Fund ALT (Polygon ERC-20)'}
+                              </span>
+                              {activeAltNum > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAltFundHelp(false)}
+                                  className="text-[11px] text-slate-600 hover:underline"
+                                >
+                                  Dismiss
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-700 leading-relaxed">
+                              <strong>1. Fund ALT on Polygon Amoy:</strong> New wallets start at <strong>0.00 ALT</strong> until an ANAGU Admin/Treasury mints or transfers <code className="font-mono">ALT</code> to your wallet address from the Admin Portal.
+                              <br />
+                              <strong>2. Buy Right Now Anyway:</strong> Even at <strong>0.00 ALT</strong>, clicking <strong>Buy Land</strong> authorizes acquisition via zero-gas cryptographic wallet signature, or click <strong>Settle via Registry Escrow</strong> for instant settlement.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              {activeAddr && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (navigator.clipboard) {
+                                      void navigator.clipboard.writeText(activeAddr);
+                                      setCopiedWalletAddr(true);
+                                      setTimeout(() => setCopiedWalletAddr(false), 1800);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100"
+                                >
+                                  {copiedWalletAddr
+                                    ? 'Copied Address!'
+                                    : `Copy Wallet (${activeAddr.slice(0, 6)}...${activeAddr.slice(-4)})`}
+                                </button>
+                              )}
+                              {faucetConfigured && (
+                                <button
+                                  type="button"
+                                  disabled={faucetClaimBusy}
+                                  onClick={() => void handleClaimFaucetAlt()}
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-700 rounded hover:bg-emerald-800 disabled:opacity-50"
+                                >
+                                  {faucetClaimBusy ? 'Sending ALT...' : 'Claim 100,000 Starter ALT'}
+                                </button>
+                              )}
+                              <a
+                                href="https://faucet.polygon.technology/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-semibold text-emerald-800 hover:underline"
+                              >
+                                Polygon Amoy POL Faucet ↗
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {selectedListing.verificationStatus !== 'UNVERIFIED' &&
                       user &&
@@ -1239,12 +1495,29 @@ export default function MarketplaceClient({
                           </a>
                         )}
                       </div>
-                      <div className="pt-1">
+                      <div className="pt-2 flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setCertificateModalTitle(latestReceipt.title)}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 whitespace-nowrap"
+                        >
+                          View / Print Certificate
+                        </button>
+                        <button
+                          type="button"
+                          disabled={downloadingTokenId === latestReceipt.title.tokenId}
+                          onClick={() => void handleQuickDownloadPdf(latestReceipt.title)}
+                          className="px-3 py-1.5 text-xs font-semibold text-emerald-900 bg-white border border-emerald-300 rounded-md hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {downloadingTokenId === latestReceipt.title.tokenId
+                            ? 'Preparing PDF...'
+                            : 'Download PDF'}
+                        </button>
                         <Link
                           href="/dashboard?tab=titles"
-                          className="font-semibold text-emerald-800 underline"
+                          className="font-semibold text-emerald-800 underline whitespace-nowrap"
                         >
-                          Open Digital Title Certificate →
+                          Open in My Titles →
                         </Link>
                       </div>
                     </div>
@@ -1277,39 +1550,68 @@ export default function MarketplaceClient({
                   <th className="px-4 py-2.5 font-medium">Consideration</th>
                   <th className="px-4 py-2.5 font-medium">Settlement</th>
                   <th className="px-4 py-2.5 font-medium">Tx Hash</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Certificate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {purchases.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-3 font-mono font-semibold text-slate-900">
-                      {p.parcelReference}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      <div>{p.title}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {p.address}, {p.lga}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-emerald-700 tabular-nums">
-                      #{p.tokenId}
-                    </td>
-                    <td className="px-4 py-3 font-mono tabular-nums text-slate-900">
-                      {formatUsd(p.priceUsd, p.priceNgn, marketRates)} · {p.priceEth} POL · {formatNgn(p.priceNgn)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {p.walletLabel || p.paymentMethod}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-slate-500">
-                      {p.txHash.slice(0, 14)}...
-                    </td>
-                  </tr>
-                ))}
+                {purchases.map((p) => {
+                  const certTitle = resolvePurchaseTitle(p);
+                  return (
+                    <tr key={p.id}>
+                      <td className="px-4 py-3 font-mono font-semibold text-slate-900">
+                        {p.parcelReference}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <div>{p.title}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {p.address}, {p.lga}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-emerald-700 tabular-nums">
+                        #{p.tokenId}
+                      </td>
+                      <td className="px-4 py-3 font-mono tabular-nums text-slate-900">
+                        {formatUsd(p.priceUsd, p.priceNgn, marketRates)} · {p.priceEth} POL ·{' '}
+                        {formatNgn(p.priceNgn)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {p.walletLabel || p.paymentMethod}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-slate-500">
+                        {p.txHash.slice(0, 14)}...
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCertificateModalTitle(certTitle)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100 whitespace-nowrap"
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            disabled={downloadingTokenId === certTitle.tokenId}
+                            onClick={() => void handleQuickDownloadPdf(certTitle)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-700 rounded hover:bg-emerald-800 disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {downloadingTokenId === certTitle.tokenId ? 'PDF...' : 'Download PDF'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
+
+      <TitleCertificateModal
+        title={certificateModalTitle}
+        onClose={() => setCertificateModalTitle(null)}
+      />
     </div>
   );
 }

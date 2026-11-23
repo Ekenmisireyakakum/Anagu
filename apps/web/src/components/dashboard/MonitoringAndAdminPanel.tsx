@@ -10,6 +10,7 @@ interface MonitoringAndAdminPanelProps {
   auditLogs: AuditLogEntry[];
   usersList: SafeUser[];
   onRefresh: () => Promise<void>;
+  onFundWallet?: (walletAddress: string, userName: string) => void;
 }
 
 const ROLES: UserRole[] = [
@@ -27,6 +28,7 @@ export default function MonitoringAndAdminPanel({
   auditLogs,
   usersList,
   onRefresh,
+  onFundWallet,
 }: MonitoringAndAdminPanelProps) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -196,11 +198,22 @@ export default function MonitoringAndAdminPanel({
                   </td>
                   <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
                     <div>{u.walletAddress}</div>
-                    {u.walletVerified && (
-                      <span className="inline-block mt-0.5 text-[10px] text-emerald-700 font-semibold">
-                        MetaMask Verified
-                      </span>
-                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {u.walletVerified && (
+                        <span className="text-[10px] text-emerald-700 font-semibold">
+                          MetaMask Verified
+                        </span>
+                      )}
+                      {onFundWallet && u.walletAddress && (
+                        <button
+                          type="button"
+                          onClick={() => onFundWallet(u.walletAddress, u.fullName)}
+                          className="font-sans px-2 py-0.5 text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+                        >
+                          Fund ALT
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4">
                     <select
