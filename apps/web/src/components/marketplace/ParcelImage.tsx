@@ -134,7 +134,6 @@ export default function ParcelImage({
                 width={256}
                 height={256}
                 unoptimized
-                referrerPolicy="no-referrer"
                 onError={() =>
                   setFailedTiles((prev) =>
                     prev[tile.key] ? prev : { ...prev, [tile.key]: true },

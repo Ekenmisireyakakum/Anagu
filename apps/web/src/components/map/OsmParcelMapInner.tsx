@@ -485,7 +485,7 @@ export default function OsmParcelMapInner({
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="/api/gis/tile/{z}/{x}/{y}.png"
           />
 
           <MapViewportController

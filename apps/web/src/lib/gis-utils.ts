@@ -293,7 +293,7 @@ export function computeMercatorParcelScene(
         ty,
         left: Math.round(tx * 256 - originX),
         top: Math.round(ty * 256 - originY),
-        url: `https://tile.openstreetmap.org/${chosenZoom}/${wrappedTx}/${ty}.png`,
+        url: `/api/gis/tile/${chosenZoom}/${wrappedTx}/${ty}.png`,
       });
     }
   }

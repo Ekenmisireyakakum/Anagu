@@ -506,7 +506,7 @@ export default function GisMap() {
       <MapContainer center={center} zoom={12} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="/api/gis/tile/{z}/{x}/{y}.png"
         />
         <MapInner parcels={parcels} flyTarget={flyTarget} />
       </MapContainer>
