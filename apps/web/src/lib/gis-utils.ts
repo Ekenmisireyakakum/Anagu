@@ -154,3 +154,157 @@ export function formatArea(sqm: number): string {
   const acres = sqm / 4046.8564;
   return `${sqm.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 1 })} m² (${acres.toFixed(2)} acres)`;
 }
+
+export const DEFAULT_PLACEHOLDER_PARCEL_IMAGES = new Set([
+  '/images/parcel_lekki_residential.jpg',
+  '/images/parcel_ikoyi_commercial.jpg',
+  '/images/parcel_vi_waterfront.jpg',
+  '/images/parcel_ikeja_gra.jpg',
+]);
+
+export function isDefaultParcelPlaceholder(url?: string | null): boolean {
+  const trimmed = (url || '').trim();
+  if (!trimmed) return true;
+  if (DEFAULT_PLACEHOLDER_PARCEL_IMAGES.has(trimmed)) return true;
+  if (trimmed.startsWith('/api/gis/parcel-image')) return true;
+  return false;
+}
+
+export function buildMappedParcelImageUrl(wkt: string, parcelReference?: string): string {
+  const params = new URLSearchParams();
+  params.set('wkt', wkt.trim());
+  if (parcelReference?.trim()) {
+    params.set('ref', parcelReference.trim());
+  }
+  return `/api/gis/parcel-image?${params.toString()}`;
+}
+
+export function extractWktFromParcelImageUrl(url?: string | null): string | null {
+  const trimmed = (url || '').trim();
+  if (!trimmed.startsWith('/api/gis/parcel-image')) return null;
+  try {
+    const queryIndex = trimmed.indexOf('?');
+    if (queryIndex === -1) return null;
+    const params = new URLSearchParams(trimmed.slice(queryIndex + 1));
+    const wkt = params.get('wkt');
+    return wkt && wktToLatLngs(wkt).length >= 3 ? wkt : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface MercatorTileItem {
+  key: string;
+  tx: number;
+  ty: number;
+  left: number;
+  top: number;
+  url: string;
+}
+
+export interface MercatorParcelScene {
+  zoom: number;
+  width: number;
+  height: number;
+  centroid: { lat: number; lon: number };
+  centroidPoint: { x: number; y: number };
+  points: Array<{ x: number; y: number }>;
+  tiles: MercatorTileItem[];
+}
+
+function projectLatLonToWorldPx(lat: number, lon: number, zoom: number): { x: number; y: number } {
+  const clampedLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const worldSize = 256 * Math.pow(2, zoom);
+  const x = ((lon + 180) / 360) * worldSize;
+  const latRad = (clampedLat * Math.PI) / 180;
+  const sinLat = Math.sin(latRad);
+  const y = (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * worldSize;
+  return { x, y };
+}
+
+export function computeMercatorParcelScene(
+  wkt: string,
+  width = 400,
+  height = 300,
+): MercatorParcelScene | null {
+  const latLngs = wktToLatLngs(wkt);
+  if (latLngs.length < 3 || width <= 0 || height <= 0) return null;
+
+  const first = latLngs[0];
+  const last = latLngs[latLngs.length - 1];
+  const ringLatLngs =
+    latLngs.length > 3 && first[0] === last[0] && first[1] === last[1]
+      ? latLngs.slice(0, -1)
+      : latLngs;
+
+  const centroid = wktCentroid(wkt) || { lat: ringLatLngs[0][0], lon: ringLatLngs[0][1] };
+
+  let chosenZoom = 17;
+  for (let z = 18; z >= 8; z--) {
+    const projected = ringLatLngs.map(([lat, lon]) => projectLatLonToWorldPx(lat, lon, z));
+    const xs = projected.map((p) => p.x);
+    const ys = projected.map((p) => p.y);
+    const spanX = Math.max(...xs) - Math.min(...xs);
+    const spanY = Math.max(...ys) - Math.min(...ys);
+    chosenZoom = z;
+    if (spanX <= width * 0.56 && spanY <= height * 0.56) {
+      break;
+    }
+  }
+
+  const worldPoints = ringLatLngs.map(([lat, lon]) =>
+    projectLatLonToWorldPx(lat, lon, chosenZoom),
+  );
+  const minX = Math.min(...worldPoints.map((p) => p.x));
+  const maxX = Math.max(...worldPoints.map((p) => p.x));
+  const minY = Math.min(...worldPoints.map((p) => p.y));
+  const maxY = Math.max(...worldPoints.map((p) => p.y));
+
+  const centerWorldX = (minX + maxX) / 2;
+  const centerWorldY = (minY + maxY) / 2;
+  const originX = centerWorldX - width / 2;
+  const originY = centerWorldY - height / 2;
+
+  const points = worldPoints.map((p) => ({
+    x: Number((p.x - originX).toFixed(2)),
+    y: Number((p.y - originY).toFixed(2)),
+  }));
+
+  const centroidWorld = projectLatLonToWorldPx(centroid.lat, centroid.lon, chosenZoom);
+  const centroidPoint = {
+    x: Number((centroidWorld.x - originX).toFixed(2)),
+    y: Number((centroidWorld.y - originY).toFixed(2)),
+  };
+
+  const numTiles = Math.pow(2, chosenZoom);
+  const minTx = Math.floor(originX / 256);
+  const maxTx = Math.floor((originX + width - 1) / 256);
+  const minTy = Math.floor(originY / 256);
+  const maxTy = Math.floor((originY + height - 1) / 256);
+
+  const tiles: MercatorTileItem[] = [];
+  for (let tx = minTx; tx <= maxTx; tx++) {
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      if (ty < 0 || ty >= numTiles) continue;
+      const wrappedTx = ((tx % numTiles) + numTiles) % numTiles;
+      tiles.push({
+        key: `${chosenZoom}-${tx}-${ty}`,
+        tx: wrappedTx,
+        ty,
+        left: Math.round(tx * 256 - originX),
+        top: Math.round(ty * 256 - originY),
+        url: `https://tile.openstreetmap.org/${chosenZoom}/${wrappedTx}/${ty}.png`,
+      });
+    }
+  }
+
+  return {
+    zoom: chosenZoom,
+    width,
+    height,
+    centroid,
+    centroidPoint,
+    points,
+    tiles,
+  };
+}

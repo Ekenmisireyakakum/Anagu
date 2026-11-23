@@ -27,6 +27,7 @@ import {
 import { useWallet } from '../WalletContext';
 import { getAuthHeaders } from '../../lib/client-auth';
 import OsmParcelMap from '../map/OsmParcelMap';
+import ParcelImage from '../marketplace/ParcelImage';
 import type {
   DocumentCategory,
   LandApplicationRecord,
@@ -453,7 +454,7 @@ export default function SubmitApplicationPanel({
       setFeedback({
         type: 'ok',
         parcelRef: createdApp.parcelReference,
-        text: `Land "${createdApp.parcelTitle || createdApp.parcelReference}" mapped and registered cleanly. It is queued for Admin approval before going live on Access Land (Polygon ERC-721 + ERC-20 ready).`,
+        text: `Land "${createdApp.parcelTitle || createdApp.parcelReference}" mapped and registered cleanly. It is now visible on Access Land for ANAGU users to view and buy while Administrator verification proceeds.`,
       });
 
       if (onSubmitted) {
@@ -777,9 +778,12 @@ export default function SubmitApplicationPanel({
 
             <div className="lg:col-span-4 bg-white border border-slate-200 rounded-lg p-3.5 space-y-3">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <span className="text-xs font-semibold text-slate-800">
-                    Site Photo <span className="font-normal text-slate-500">(Optional)</span>
+                    Land Display Image{' '}
+                    <span className="font-normal text-slate-500">
+                      (Uses mapped GIS image by default)
+                    </span>
                   </span>
                   {siteImageUrl && (
                     <button
@@ -790,10 +794,26 @@ export default function SubmitApplicationPanel({
                       }}
                       className="text-[11px] font-medium text-red-700 hover:underline"
                     >
-                      Remove
+                      Use Mapped Image
                     </button>
                   )}
                 </div>
+
+                {ringStats.valid && (
+                  <div className="mb-2.5 aspect-[16/9] w-full rounded-md overflow-hidden border border-slate-200 bg-slate-100">
+                    <ParcelImage
+                      src={siteImageUrl}
+                      alt={landName || locationAddress || 'Mapped land preview'}
+                      parcelReference={parcelReference || 'NEW-PLOT'}
+                      lga={areaName || locationAddress || 'Mapped Area'}
+                      wkt={ringStats.wkt}
+                    />
+                  </div>
+                )}
+
+                <label className="block text-[11px] text-slate-500 mb-1">
+                  Optional: upload a custom site photo to override the mapped-out image
+                </label>
                 <input
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
@@ -802,7 +822,7 @@ export default function SubmitApplicationPanel({
                 />
                 {siteImageUrl && (
                   <p className="mt-1 text-[11px] text-emerald-700 truncate">
-                    Attached: {siteImageName}
+                    Custom photo attached: {siteImageName}
                   </p>
                 )}
               </div>

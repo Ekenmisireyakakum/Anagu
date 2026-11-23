@@ -15,6 +15,10 @@ import {
   usdToNgn,
   type MarketRates,
 } from './pricing';
+import {
+  buildMappedParcelImageUrl,
+  isDefaultParcelPlaceholder,
+} from './gis-utils';
 import { flushSupabaseSync, hydrateStoreFromSupabase, scheduleSupabaseSync } from './supabase';
 
 export type UserRole =
@@ -518,7 +522,7 @@ function initStore(): AnaguGlobalStore {
       priceEth: usdToEth(78500),
       priceAnchorCurrency: 'USD',
       saleTerms: 'Survey & Oracle cleared; awaiting final Registrar deed verification.',
-      siteImageUrl: '/images/parcel_lekki_residential.jpg',
+      siteImageUrl: buildMappedParcelImageUrl(pendingAppWkt, 'LG-LK-044'),
       state: 'Lagos',
       lga: 'Eti-Osa',
       address: 'Plot 44, Freedom Way, Lekki Phase 1',
@@ -584,7 +588,10 @@ function initStore(): AnaguGlobalStore {
       priceEth: usdToEth(62000),
       priceAnchorCurrency: 'USD',
       saleTerms: 'Submitted directly by owner; spatial & deed verification pending.',
-      siteImageUrl: '/images/parcel_ikeja_gra.jpg',
+      siteImageUrl: buildMappedParcelImageUrl(
+        'POLYGON((3.3510 6.5820, 3.3524 6.5820, 3.3524 6.5810, 3.3510 6.5810, 3.3510 6.5820))',
+        'LG-IK-088',
+      ),
       state: 'Lagos',
       lga: 'Ikeja',
       address: '88 Isaac John Street, GRA Ikeja',
@@ -1438,6 +1445,12 @@ function publishApplicationToCheckLands(
     existing.verificationStatus = 'VERIFIED';
     existing.applicationStatus = 'REGISTERED';
     existing.tokenId = title.tokenId;
+    if (isDefaultParcelPlaceholder(existing.imageUrl)) {
+      existing.imageUrl =
+        app.siteImageUrl && !isDefaultParcelPlaceholder(app.siteImageUrl)
+          ? app.siteImageUrl
+          : buildMappedParcelImageUrl(app.wkt, title.parcelReference);
+    }
     return existing;
   }
 
@@ -1472,7 +1485,10 @@ function publishApplicationToCheckLands(
     verificationStatus: 'VERIFIED',
     applicationStatus: 'REGISTERED',
     status: 'AVAILABLE',
-    imageUrl: app.siteImageUrl || '/images/parcel_lekki_residential.jpg',
+    imageUrl:
+      app.siteImageUrl && !isDefaultParcelPlaceholder(app.siteImageUrl)
+        ? app.siteImageUrl
+        : buildMappedParcelImageUrl(app.wkt, title.parcelReference),
     description:
       app.saleTerms ||
       `GIS-mapped ${app.zoning || 'Residential'} parcel (${app.ownershipType || 'Freehold'}) verified by Administrator${app.surveyPlanNumber ? ` · Survey ${app.surveyPlanNumber}` : ''}.`,
@@ -2299,7 +2315,10 @@ function buildUnverifiedListingFromApp(
     verificationStatus: 'UNVERIFIED',
     applicationStatus: app.status,
     status: 'AVAILABLE',
-    imageUrl: app.siteImageUrl || '/images/parcel_ikoyi_commercial.jpg',
+    imageUrl:
+      app.siteImageUrl && !isDefaultParcelPlaceholder(app.siteImageUrl)
+        ? app.siteImageUrl
+        : buildMappedParcelImageUrl(app.wkt, app.parcelReference),
     description:
       app.saleTerms ||
       `Unverified parcel (${app.status.replace(/_/g, ' ').toLowerCase()}) submitted by ${app.claimantName || app.applicantName}. Available for Web3 wallet acquisition while deed verification is pending.`,
@@ -2336,15 +2355,19 @@ export function listLandListings(filters?: {
   }
 
   const rates = getCachedMarketRates();
-  const verifiedListings: LandListingRecord[] = store.listings.map((item) =>
-    syncListingWithRates(
+  const verifiedListings: LandListingRecord[] = store.listings.map((item) => {
+    const resolvedImageUrl = isDefaultParcelPlaceholder(item.imageUrl)
+      ? buildMappedParcelImageUrl(item.wkt, item.parcelReference)
+      : item.imageUrl;
+    return syncListingWithRates(
       {
         ...item,
+        imageUrl: resolvedImageUrl,
         verificationStatus: item.verificationStatus || 'VERIFIED',
       },
       rates,
-    ),
-  );
+    );
+  });
 
   const listedRefs = new Set(
     verifiedListings.map((item) => item.parcelReference.toLowerCase()),
@@ -2481,7 +2504,10 @@ export function createLandListing(
     verificationStatus: 'VERIFIED',
     applicationStatus: 'REGISTERED',
     status: 'AVAILABLE',
-    imageUrl: '/images/parcel_vi_waterfront.jpg',
+    imageUrl:
+      matchingApp?.siteImageUrl && !isDefaultParcelPlaceholder(matchingApp.siteImageUrl)
+        ? matchingApp.siteImageUrl
+        : buildMappedParcelImageUrl(wkt, titleRecord.parcelReference),
     description:
       input.description?.trim() ||
       `Verified ERC-721 Title #${titleRecord.tokenId} offered for registry-controlled acquisition and deed transfer.`,
@@ -2523,12 +2549,37 @@ export function purchaseLandListing(
   if (!store.listings) listLandListings();
   if (!store.purchases) store.purchases = [];
 
-  const listing = store.listings.find((l) => l.id === listingId);
+  let listing = store.listings.find((l) => l.id === listingId);
+  let sourceApp: LandApplicationRecord | undefined;
+
+  if (!listing && listingId.startsWith('app-listing-')) {
+    const appId = listingId.slice('app-listing-'.length);
+    sourceApp = store.applications.find((a) => a.id === appId);
+    if (!sourceApp) {
+      throw new Error('Land listing not found');
+    }
+    if (sourceApp.status === 'REVOKED') {
+      throw new Error('This land parcel has been revoked by the Administrator and cannot be purchased.');
+    }
+    if (sourceApp.status === 'REJECTED' || sourceApp.status === 'CANCELLED') {
+      throw new Error('This land registration is no longer available for purchase.');
+    }
+
+    const existingForParcel = store.listings.find(
+      (l) => l.parcelReference.toLowerCase() === sourceApp!.parcelReference.toLowerCase(),
+    );
+    if (existingForParcel) {
+      listing = existingForParcel;
+    } else {
+      if (sourceApp.applicantId === user.id) {
+        throw new Error('You already own or control this listed parcel.');
+      }
+      listing = buildUnverifiedListingFromApp(sourceApp, store.users);
+      store.listings.unshift(listing);
+    }
+  }
 
   if (!listing) {
-    if (listingId.startsWith('app-listing-')) {
-      throw new Error('This land parcel is pending Administrator approval before it can be accessed or purchased.');
-    }
     throw new Error('Land listing not found');
   }
   if (listing.status === 'REVOKED') {
@@ -2537,7 +2588,7 @@ export function purchaseLandListing(
   if (listing.status !== 'AVAILABLE') {
     throw new Error('This land parcel has already been acquired and transferred.');
   }
-  if (listing.sellerId === user.id && !listingId.startsWith('app-listing-')) {
+  if (listing.sellerId === user.id) {
     throw new Error('You already own or control this listed parcel.');
   }
 
@@ -2587,73 +2638,115 @@ export function purchaseLandListing(
       action: 'TRANSFERRED',
     });
   } else {
-    const appId = crypto.randomUUID();
+    const appId = sourceApp?.id || crypto.randomUUID();
     const tokenId = store.nextTokenId++;
     const blockNumber = store.nextBlockNumber++;
     const spatial = verifyWktParcel(listing.wkt, appId, listing.parcelId);
-    const deedHash = sha256(`acquisition:${listing.parcelReference}:${user.id}:${now}`);
+    const deedHash =
+      sourceApp && sourceApp.documents.length > 0
+        ? sha256(sourceApp.documents.map((d) => d.sha256Hash).join(':'))
+        : sha256(`acquisition:${listing.parcelReference}:${user.id}:${now}`);
 
-    const applicationRecord: LandApplicationRecord = {
-      id: appId,
-      applicantId: user.id,
-      applicantName: user.fullName,
-      applicantEmail: user.email,
-      parcelId: listing.parcelId,
-      parcelReference: listing.parcelReference,
-      state: listing.state,
-      lga: listing.lga,
-      address: listing.address,
-      wkt: listing.wkt,
-      claimantName: user.fullName,
-      nationalIdHash: sha256(user.id),
-      documents: [
-        {
+    const coordsMatch = listing.wkt.match(/POLYGON\s*\(\(([^)]+)\)\)/i);
+    const ring = coordsMatch
+      ? coordsMatch[1].split(',').map((pair) => {
+          const [lon, lat] = pair.trim().split(/\s+/).map(Number);
+          return [lon, lat];
+        })
+      : [];
+    const existingParcel = getAllEffectiveParcels().find(
+      (p) => p.id === listing!.parcelId || p.parcelNumber === listing!.parcelReference,
+    );
+    const resolvedParcelId = existingParcel?.id || listing.parcelId || crypto.randomUUID();
+    if (!existingParcel && ring.length >= 3) {
+      store.extraParcels.unshift({
+        id: resolvedParcelId,
+        parcelNumber: listing.parcelReference,
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        areaSqm: listing.areaSqm || spatial.areaSqm,
+        state: listing.state,
+        lga: listing.lga,
+        address: listing.address,
+        status: 'active',
+        ownerId: user.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else if (existingParcel) {
+      store.parcelStatusOverrides.set(existingParcel.id, 'active');
+    }
+    listing.parcelId = resolvedParcelId;
+
+    if (sourceApp) {
+      sourceApp.parcelId = resolvedParcelId;
+      sourceApp.status = 'REGISTERED';
+      sourceApp.tokenId = tokenId;
+      sourceApp.txHash = txHash;
+      sourceApp.updatedAt = now;
+      sourceApp.registrarNotes = `Acquired by ${user.fullName} via ${resolvedWalletLabel} (Token #${tokenId}).`;
+    } else {
+      const applicationRecord: LandApplicationRecord = {
+        id: appId,
+        applicantId: user.id,
+        applicantName: user.fullName,
+        applicantEmail: user.email,
+        parcelId: resolvedParcelId,
+        parcelReference: listing.parcelReference,
+        state: listing.state,
+        lga: listing.lga,
+        address: listing.address,
+        wkt: listing.wkt,
+        claimantName: user.fullName,
+        nationalIdHash: sha256(user.id),
+        documents: [
+          {
+            id: crypto.randomUUID(),
+            fileName: `Allocation_Deed_${listing.parcelReference}.pdf`,
+            fileType: 'application/pdf',
+            fileSizeBytes: 342100,
+            sha256Hash: deedHash,
+            objectKey: `anagu-documents/${listing.parcelReference}/Allocation_Deed_${listing.parcelReference}.pdf`,
+            uploadedAt: now,
+          },
+        ],
+        status: 'REGISTERED',
+        spatialVerification: spatial,
+        surveyReport: {
           id: crypto.randomUUID(),
-          fileName: `Allocation_Deed_${listing.parcelReference}.pdf`,
-          fileType: 'application/pdf',
-          fileSizeBytes: 342100,
-          sha256Hash: deedHash,
-          objectKey: `anagu-documents/${listing.parcelReference}/Allocation_Deed_${listing.parcelReference}.pdf`,
-          uploadedAt: now,
+          surveyorId: store.users[1]?.id || 'SYSTEM_SURVEYOR',
+          surveyorName: store.users[1]?.fullName || 'Lagos State Surveyor-General',
+          findings: 'Pre-surveyed state parcel boundaries verified under EPSG:4326.',
+          boundaryConfirmed: true,
+          submittedAt: now,
         },
-      ],
-      status: 'REGISTERED',
-      spatialVerification: spatial,
-      surveyReport: {
-        id: crypto.randomUUID(),
-        surveyorId: store.users[1]?.id || 'SYSTEM_SURVEYOR',
-        surveyorName: store.users[1]?.fullName || 'Lagos State Surveyor-General',
-        findings: 'Pre-surveyed state parcel boundaries verified under EPSG:4326.',
-        boundaryConfirmed: true,
+        oracleVerification: {
+          id: crypto.randomUUID(),
+          applicationId: appId,
+          institutionalVerified: true,
+          communityVerified: true,
+          institutionalDetails: { registry: 'LASRECCA', source: listing.listingType },
+          communityDetails: { allocationCleared: true },
+          overallOutcome: 'VERIFIED',
+          notes: 'Cleared via ANAGU verified land acquisition settlement.',
+          verifiedAt: now,
+        },
+        legalVerified: true,
+        legalOfficerName: store.users[2]?.fullName || 'ANAGU Registry Desk',
+        legalNotes: 'Statutory allocation settled and deed issued.',
+        registrarNotes: `Acquired via ${resolvedWalletLabel} and minted to ${user.fullName}.`,
+        tokenId,
+        txHash,
+        idempotencyKey: null,
         submittedAt: now,
-      },
-      oracleVerification: {
-        id: crypto.randomUUID(),
-        applicationId: appId,
-        institutionalVerified: true,
-        communityVerified: true,
-        institutionalDetails: { registry: 'LASRECCA', source: listing.listingType },
-        communityDetails: { allocationCleared: true },
-        overallOutcome: 'VERIFIED',
-        notes: 'Cleared via ANAGU verified land acquisition settlement.',
-        verifiedAt: now,
-      },
-      legalVerified: true,
-      legalOfficerName: store.users[2]?.fullName || 'ANAGU Registry Desk',
-      legalNotes: 'Statutory allocation settled and deed issued.',
-      registrarNotes: `Acquired via ${resolvedWalletLabel} and minted to ${user.fullName}.`,
-      tokenId,
-      txHash,
-      idempotencyKey: null,
-      submittedAt: now,
-      updatedAt: now,
-    };
-    store.applications.unshift(applicationRecord);
+        updatedAt: now,
+      };
+      store.applications.unshift(applicationRecord);
+    }
 
     titleRecord = {
       tokenId,
       applicationId: appId,
-      parcelId: listing.parcelId,
+      parcelId: resolvedParcelId,
       parcelReference: listing.parcelReference,
       address: listing.address,
       lga: listing.lga,
@@ -2676,17 +2769,17 @@ export function purchaseLandListing(
       revokedByName: null,
       ownershipHistory: [
         {
-          fromAddress: '0x0000000000000000000000000000000000000000',
+          fromAddress: sourceApp ? listing.sellerAddress : '0x0000000000000000000000000000000000000000',
           toAddress: buyerWallet,
           toName: user.fullName,
           txHash,
           timestamp: now,
-          action: 'ISSUED',
+          action: sourceApp ? 'TRANSFERRED' : 'ISSUED',
         },
       ],
     };
     store.titles.unshift(titleRecord);
-    store.parcelStatusOverrides.set(listing.parcelId, 'active');
+    store.parcelStatusOverrides.set(resolvedParcelId, 'active');
   }
 
   const syncedListing = syncListingWithRates(listing, getCachedMarketRates());
@@ -2694,6 +2787,7 @@ export function purchaseLandListing(
   listing.priceNgn = syncedListing.priceNgn;
   listing.priceEth = syncedListing.priceEth;
   listing.status = 'SOLD';
+  listing.applicationStatus = 'REGISTERED';
   listing.tokenId = titleRecord.tokenId;
   listing.soldAt = now;
   listing.buyerId = user.id;

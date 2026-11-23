@@ -942,6 +942,9 @@ export default function MarketplaceClient({
                         alt={item.title}
                         parcelReference={item.parcelReference}
                         lga={item.lga}
+                        wkt={item.wkt}
+                        verificationStatus={item.verificationStatus}
+                        status={item.status}
                       />
                     </div>
                     <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
@@ -1012,6 +1015,9 @@ export default function MarketplaceClient({
                     alt={selectedListing.title}
                     parcelReference={selectedListing.parcelReference}
                     lga={selectedListing.lga}
+                    wkt={selectedListing.wkt}
+                    verificationStatus={selectedListing.verificationStatus}
+                    status={selectedListing.status}
                   />
                 </div>
 
@@ -1046,9 +1052,10 @@ export default function MarketplaceClient({
                     </p>
                     {selectedListing.verificationStatus === 'UNVERIFIED' && (
                       <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-200 text-xs text-amber-950">
-                        <strong>Unverified Parcel Notice:</strong> This plot is currently undergoing registry deed and spatial verification (
+                        <strong>Registered Land · Pending Deed Verification:</strong> Listed by{' '}
+                        {selectedListing.sellerName} (
                         {(selectedListing.applicationStatus || 'SUBMITTED').replace(/_/g, ' ').toLowerCase()}
-                        ). You may still acquire it now via any Web3 wallet or Escrow.
+                        ). Every ANAGU account holder can view and buy this parcel now via Web3 wallet or Escrow.
                       </div>
                     )}
                   </div>
@@ -1397,9 +1404,7 @@ export default function MarketplaceClient({
                         );
                       })()}
 
-                      {selectedListing.verificationStatus !== 'UNVERIFIED' &&
-                      user &&
-                      selectedListing.sellerId === user.id ? (
+                      {user && selectedListing.sellerId === user.id ? (
                         <div className="p-3 rounded-md bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700 text-center">
                           You Are the Listed Owner
                         </div>

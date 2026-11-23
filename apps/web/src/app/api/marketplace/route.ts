@@ -10,7 +10,7 @@ import { refreshMarketRates } from '../../../lib/pricing';
 import { getAuthenticatedUser } from '../../../lib/server-auth';
 
 export async function GET(request: NextRequest) {
-  await ensureStoreReady();
+  await ensureStoreReady({ force: true });
   const { searchParams } = new URL(request.url);
   const lga = searchParams.get('lga');
   const status = searchParams.get('status');
@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     verificationStatus,
     q,
     includeRevoked,
+    includeUnapproved: true,
   });
   const purchases = user ? listUserPurchases(user) : [];
 

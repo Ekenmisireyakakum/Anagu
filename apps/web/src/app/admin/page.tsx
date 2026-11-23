@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
 import OsmParcelMap from '../../components/map/OsmParcelMap';
+import ParcelImage from '../../components/marketplace/ParcelImage';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
 import { useWallet } from '../../components/WalletContext';
 import {
@@ -870,12 +871,35 @@ export default function AdminDashboardPage() {
                           : 'PENDING CHECK'}
                       </span>
                     </div>
-                    <OsmParcelMap
-                      wkt={selectedApp.wkt}
-                      label={selectedApp.parcelReference}
-                      address={selectedApp.address}
-                      heightClassName="h-48"
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
+                      <div className="md:col-span-5 space-y-1">
+                        <div className="text-[11px] font-medium text-slate-600">
+                          Access Land Display Image
+                        </div>
+                        <div className="h-48 w-full rounded-md overflow-hidden border border-slate-200 bg-slate-100">
+                          <ParcelImage
+                            src={selectedApp.siteImageUrl}
+                            alt={selectedApp.parcelTitle || selectedApp.address}
+                            parcelReference={selectedApp.parcelReference}
+                            lga={selectedApp.lga}
+                            wkt={selectedApp.wkt}
+                            verificationStatus="UNVERIFIED"
+                            status={selectedApp.status}
+                          />
+                        </div>
+                      </div>
+                      <div className="md:col-span-7 space-y-1">
+                        <div className="text-[11px] font-medium text-slate-600">
+                          Interactive GIS Verification Map
+                        </div>
+                        <OsmParcelMap
+                          wkt={selectedApp.wkt}
+                          label={selectedApp.parcelReference}
+                          address={selectedApp.address}
+                          heightClassName="h-48"
+                        />
+                      </div>
+                    </div>
                     <p className="text-[11px] font-mono text-slate-500 break-all">
                       WKT: {selectedApp.wkt}
                     </p>
@@ -1079,13 +1103,34 @@ export default function AdminDashboardPage() {
                         {selectedListing.address} · {selectedListing.lga}, {selectedListing.state} ·{' '}
                         {selectedListing.areaSqm.toLocaleString()} m²
                       </p>
-                      <div className="pt-2">
-                        <OsmParcelMap
-                          wkt={selectedListing.wkt}
-                          label={selectedListing.parcelReference}
-                          address={selectedListing.address}
-                          heightClassName="h-44"
-                        />
+                      <div className="pt-2 grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                        <div className="md:col-span-5 space-y-1">
+                          <div className="text-[11px] font-medium text-slate-600">
+                            Access Land Display Image
+                          </div>
+                          <div className="h-44 w-full rounded-md overflow-hidden border border-slate-200 bg-slate-100">
+                            <ParcelImage
+                              src={selectedListing.imageUrl}
+                              alt={selectedListing.title}
+                              parcelReference={selectedListing.parcelReference}
+                              lga={selectedListing.lga}
+                              wkt={selectedListing.wkt}
+                              verificationStatus={selectedListing.verificationStatus}
+                              status={selectedListing.status}
+                            />
+                          </div>
+                        </div>
+                        <div className="md:col-span-7 space-y-1">
+                          <div className="text-[11px] font-medium text-slate-600">
+                            Interactive GIS Boundary Map
+                          </div>
+                          <OsmParcelMap
+                            wkt={selectedListing.wkt}
+                            label={selectedListing.parcelReference}
+                            address={selectedListing.address}
+                            heightClassName="h-44"
+                          />
+                        </div>
                       </div>
                     </div>
 

@@ -11,7 +11,7 @@ export default async function HomePage() {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const currentUser = token ? verifySessionToken(token) : null;
 
-  const listings = listLandListings();
+  const listings = listLandListings({ includeUnapproved: true });
   const availableListings = listings.filter((l) => l.status === 'AVAILABLE');
   const verifiedAvailableCount = availableListings.filter(
     (l) => (l.verificationStatus || 'VERIFIED') === 'VERIFIED',
