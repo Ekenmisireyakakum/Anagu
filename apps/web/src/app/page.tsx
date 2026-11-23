@@ -24,7 +24,13 @@ export default async function HomePage() {
     <HomePortalClient
       initialUser={
         currentUser
-          ? { id: currentUser.id, fullName: currentUser.fullName, role: currentUser.role }
+          ? {
+              id: currentUser.id,
+              fullName: currentUser.fullName,
+              role: currentUser.role,
+              walletAddress: currentUser.walletAddress,
+              walletVerified: currentUser.walletVerified,
+            }
           : null
       }
       availableCount={availableListings.length}

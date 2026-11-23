@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { BESU_CHAIN_ID } from '../lib/metamask';
+import { BESU_CHAIN_ID, watchLandTokenInWallet } from '../lib/metamask';
 import { useWallet } from './WalletContext';
 
 export default function MetaMaskConnectModal() {
@@ -99,10 +99,49 @@ export default function MetaMaskConnectModal() {
                 <div className="font-mono text-xs text-slate-900 break-all">
                   {wallet.address}
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <div className="px-3 py-2 rounded bg-white border border-emerald-200">
+                    <div className="text-[11px] text-slate-500">ANAGU Token (ALT · ERC-20)</div>
+                    <div className="font-mono text-sm font-bold text-emerald-800 tabular-nums">
+                      {wallet.balanceAlt ?? '0.00'} ALT
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 rounded bg-white border border-emerald-200">
+                    <div className="text-[11px] text-slate-500">
+                      Native Balance ({wallet.chainName})
+                    </div>
+                    <div className="font-mono text-sm font-bold text-slate-900 tabular-nums">
+                      {wallet.balanceEth ?? '0.0000'} {wallet.nativeSymbol}
+                    </div>
+                    {wallet.polygonPolBalance &&
+                      wallet.chainId !== 80002 &&
+                      wallet.chainId !== 137 && (
+                        <div className="text-[10px] font-mono text-slate-500 tabular-nums">
+                          Polygon Amoy: {wallet.polygonPolBalance} POL
+                        </div>
+                      )}
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-                  <span className="font-mono text-slate-700 tabular-nums">
-                    Balance: {wallet.balanceEth ?? '0.0000'} ETH · {wallet.chainName}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={wallet.isRefreshingBalance}
+                      onClick={() => void wallet.refreshBalance()}
+                      className="px-2.5 py-1 font-medium text-emerald-800 bg-white border border-emerald-300 rounded hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      {wallet.isRefreshingBalance ? 'Refreshing...' : 'Refresh Balance'}
+                    </button>
+                    {wallet.provider && (
+                      <button
+                        type="button"
+                        onClick={() => wallet.provider && void watchLandTokenInWallet(wallet.provider)}
+                        className="px-2.5 py-1 font-medium text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100"
+                      >
+                        + Add ALT Token
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={copyAddress}
@@ -326,83 +365,84 @@ export default function MetaMaskConnectModal() {
                         ))}
                       </div>
                     ) : (
-                      <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
-                        <p>
-                          {wallet.inIframe
-                            ? 'Embedded preview frames block browser extension injection. Open ANAGU in a standalone tab to connect MetaMask, Coinbase Wallet, Rabby, Rainbow, Phantom, or Trust Wallet extensions—or use Mobile QR below.'
-                            : 'No injected browser Web3 extension detected yet. Install any EIP-1193 wallet (MetaMask, Trust Wallet, Coinbase Wallet, Rabby, Rainbow, Phantom, OKX) or pair a mobile wallet.'}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={wallet.isConnecting}
-                            onClick={async () => {
-                              const res = await wallet.connectWithBrowserSigner();
-                              if (res.address) wallet.closeModal();
-                            }}
-                            className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
-                          >
-                            {wallet.isConnecting
-                              ? 'Starting Web3 Wallet...'
-                              : 'Use Instant Browser Web3 Wallet'}
-                          </button>
-                          {wallet.inIframe && currentUrl && (
-                            <a
-                              href={currentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50"
-                            >
-                              Open in New Tab →
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => wallet.setSelectedTab('mobile')}
-                            className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800"
-                          >
-                            Mobile Wallet / QR
-                          </button>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-200/80">
-                          <button
-                            type="button"
-                            onClick={() => setShowKeyImport((prev) => !prev)}
-                            className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
-                          >
-                            {showKeyImport
-                              ? 'Hide EVM Private Key Import'
-                              : 'Or Connect Using a Custom / Besu Private Key'}
-                          </button>
-                          {showKeyImport && (
-                            <div className="mt-2 flex flex-col sm:flex-row gap-2">
-                              <input
-                                type="password"
-                                value={privateKeyInput}
-                                onChange={(e) => setPrivateKeyInput(e.target.value)}
-                                placeholder="Paste 0x... EVM private key (stored in session only)"
-                                className="flex-1 px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-md"
-                              />
-                              <button
-                                type="button"
-                                disabled={wallet.isConnecting || !privateKeyInput.trim()}
-                                onClick={async () => {
-                                  const res = await wallet.connectWithBrowserSigner(privateKeyInput);
-                                  if (res.address) {
-                                    setPrivateKeyInput('');
-                                    wallet.closeModal();
-                                  }
-                                }}
-                                className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
-                              >
-                                Import &amp; Connect
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {wallet.inIframe
+                          ? 'Embedded preview frames block browser extension injection. Open ANAGU in a standalone tab to connect MetaMask, Coinbase Wallet, Rabby, Rainbow, Phantom, or Trust Wallet extensions—or use Instant Browser Web3 Wallet or Mobile QR below.'
+                          : 'No injected browser Web3 extension detected yet. Install any EIP-1193 wallet (MetaMask, Trust Wallet, Coinbase Wallet, Rabby, Rainbow, Phantom, OKX), use Instant Browser Web3 Wallet, or pair a mobile wallet.'}
+                      </p>
                     )}
+
+                    <div className="pt-2 border-t border-slate-200/80 space-y-2.5 text-xs text-slate-600">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={wallet.isConnecting}
+                          onClick={async () => {
+                            const res = await wallet.connectWithBrowserSigner();
+                            if (res.address) wallet.closeModal();
+                          }}
+                          className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {wallet.isConnecting
+                            ? 'Starting Web3 Wallet...'
+                            : 'Use Instant Browser Web3 Wallet'}
+                        </button>
+                        {wallet.inIframe && currentUrl && (
+                          <a
+                            href={currentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 rounded-md hover:bg-emerald-50"
+                          >
+                            Open in New Tab →
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => wallet.setSelectedTab('mobile')}
+                          className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800"
+                        >
+                          Mobile Wallet / QR
+                        </button>
+                      </div>
+
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowKeyImport((prev) => !prev)}
+                          className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
+                        >
+                          {showKeyImport
+                            ? 'Hide EVM Private Key Import'
+                            : 'Or Connect Using a Custom / Polygon Private Key'}
+                        </button>
+                        {showKeyImport && (
+                          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="password"
+                              value={privateKeyInput}
+                              onChange={(e) => setPrivateKeyInput(e.target.value)}
+                              placeholder="Paste 0x... EVM private key (stored in session only)"
+                              className="flex-1 px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-md"
+                            />
+                            <button
+                              type="button"
+                              disabled={wallet.isConnecting || !privateKeyInput.trim()}
+                              onClick={async () => {
+                                const res = await wallet.connectWithBrowserSigner(privateKeyInput);
+                                if (res.address) {
+                                  setPrivateKeyInput('');
+                                  wallet.closeModal();
+                                }
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
+                            >
+                              Import &amp; Connect
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="p-4 rounded-md border border-slate-200 bg-white space-y-2.5">
@@ -480,21 +520,19 @@ export default function MetaMaskConnectModal() {
                         {wallet.isConnecting ? 'Requesting MetaMask...' : 'Connect MetaMask Extension'}
                       </button>
 
-                      {!wallet.isMetaMaskAvailable && (
-                        <button
-                          type="button"
-                          disabled={wallet.isConnecting}
-                          onClick={async () => {
-                            const res = await wallet.connectWithBrowserSigner();
-                            if (res.address) wallet.closeModal();
-                          }}
-                          className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
-                        >
-                          {wallet.isConnecting
-                            ? 'Starting Web3 Wallet...'
-                            : 'Use Instant Browser Web3 Wallet'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={wallet.isConnecting}
+                        onClick={async () => {
+                          const res = await wallet.connectWithBrowserSigner();
+                          if (res.address) wallet.closeModal();
+                        }}
+                        className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                      >
+                        {wallet.isConnecting
+                          ? 'Starting Web3 Wallet...'
+                          : 'Use Instant Browser Web3 Wallet'}
+                      </button>
 
                       {wallet.inIframe && currentUrl && (
                         <a
@@ -620,21 +658,19 @@ export default function MetaMaskConnectModal() {
                         {wallet.isConnecting ? 'Requesting Trust Wallet...' : 'Connect Trust Wallet Extension'}
                       </button>
 
-                      {!wallet.isTrustWalletAvailable && (
-                        <button
-                          type="button"
-                          disabled={wallet.isConnecting}
-                          onClick={async () => {
-                            const res = await wallet.connectWithBrowserSigner();
-                            if (res.address) wallet.closeModal();
-                          }}
-                          className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
-                        >
-                          {wallet.isConnecting
-                            ? 'Starting Web3 Wallet...'
-                            : 'Use Instant Browser Web3 Wallet'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={wallet.isConnecting}
+                        onClick={async () => {
+                          const res = await wallet.connectWithBrowserSigner();
+                          if (res.address) wallet.closeModal();
+                        }}
+                        className="px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 disabled:opacity-50"
+                      >
+                        {wallet.isConnecting
+                          ? 'Starting Web3 Wallet...'
+                          : 'Use Instant Browser Web3 Wallet'}
+                      </button>
 
                       {wallet.inIframe && currentUrl && (
                         <a

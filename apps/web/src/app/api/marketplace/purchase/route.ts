@@ -15,7 +15,7 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureStoreReady();
+    await ensureStoreReady({ force: true });
     await refreshMarketRates();
     const body = await request.json();
     if (!body?.listingId) {

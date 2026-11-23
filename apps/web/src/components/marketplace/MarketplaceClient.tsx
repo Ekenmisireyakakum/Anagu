@@ -11,7 +11,11 @@ import {
   usdToNgn,
   type MarketRates,
 } from '../../lib/pricing';
-import { watchLandTokenInWallet } from '../../lib/metamask';
+import {
+  fetchAnaguWalletBalance,
+  watchLandTokenInWallet,
+  type AnaguBalanceResult,
+} from '../../lib/metamask';
 import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
 import { getAuthHeaders } from '../../lib/client-auth';
 import { useWallet } from '../WalletContext';
@@ -75,6 +79,7 @@ export default function MarketplaceClient({
 
   const [marketRates, setMarketRates] = useState<MarketRates>(FALLBACK_MARKET_RATES);
   const [refreshingRates, setRefreshingRates] = useState(false);
+  const [userAccountBalance, setUserAccountBalance] = useState<AnaguBalanceResult | null>(null);
 
   // List owned land form
   const [showListForm, setShowListForm] = useState(false);
@@ -164,6 +169,21 @@ export default function MarketplaceClient({
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let active = true;
+    if (!user?.walletAddress || (wallet.isConnected && wallet.balanceAlt !== null)) {
+      return;
+    }
+    fetchAnaguWalletBalance(user.walletAddress)
+      .then((res) => {
+        if (active) setUserAccountBalance(res);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.walletAddress, wallet.balanceAlt, wallet.isConnected]);
+
   const lgaOptions = useMemo(() => {
     const unique = Array.from(new Set(listings.map((l) => l.lga))).sort();
     return ['ALL', ...unique];
@@ -249,6 +269,13 @@ export default function MarketplaceClient({
         const targetProvider =
           preferredWallet === 'any' ? wallet.walletType || 'any' : preferredWallet;
 
+        const effectiveProviderArg =
+          wallet.walletType === 'browser_signer' ||
+          wallet.connectionMethod === 'sdk' ||
+          wallet.inIframe
+            ? 'any'
+            : targetProvider;
+
         const walletProof = await wallet.authorizeRegistryAction({
           kind: 'PURCHASE_LAND',
           listingId: listing.id,
@@ -258,7 +285,7 @@ export default function MarketplaceClient({
           priceNgn: listing.priceNgn,
           priceUsd: listing.priceUsd,
           actorRole: user?.role || 'CITIZEN',
-          walletProvider: wallet.walletType === 'browser_signer' ? 'any' : targetProvider,
+          walletProvider: effectiveProviderArg,
           walletName: wallet.walletLabel,
         });
 
@@ -318,17 +345,30 @@ export default function MarketplaceClient({
     setFeedback(null);
     setLatestReceipt(null);
 
+    if (wallet.inIframe && !wallet.isConnected) {
+      wallet.clearError();
+      setPendingWalletPurchase({
+        listingId: selectedListing.id,
+        preferredWallet,
+      });
+      wallet.openModal(preferredWallet === 'any' ? 'all' : preferredWallet);
+      return;
+    }
+
     const needsSpecificSwitch =
+      !wallet.inIframe &&
       preferredWallet !== 'any' &&
       wallet.isConnected &&
       wallet.walletType !== preferredWallet &&
-      wallet.discoveredWallets.some((w) => w.id === preferredWallet);
+      wallet.walletType !== 'browser_signer' &&
+      wallet.connectionMethod !== 'sdk' &&
+      wallet.discoveredWallets.some((w) => w.walletType === preferredWallet || w.id === preferredWallet);
 
     if (!wallet.isConnected || needsSpecificSwitch) {
       const autoTarget: 'metamask' | 'trustwallet' =
         preferredWallet === 'any'
-          ? wallet.discoveredWallets.some((w) => w.id === 'trustwallet') &&
-            !wallet.discoveredWallets.some((w) => w.id === 'metamask')
+          ? wallet.discoveredWallets.some((w) => w.walletType === 'trustwallet') &&
+            !wallet.discoveredWallets.some((w) => w.walletType === 'metamask')
             ? 'trustwallet'
             : 'metamask'
           : preferredWallet;
@@ -1039,18 +1079,41 @@ export default function MarketplaceClient({
                         />
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
-                        <div className="min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 border border-slate-200 rounded-md px-3 py-2.5">
+                        <div className="min-w-0 space-y-0.5">
                           <span className="text-slate-700 font-medium block truncate">
                             {wallet.isConnected && wallet.address
                               ? `${wallet.walletLabel}: ${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+                              : user?.walletAddress
+                              ? `Account Wallet: ${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}`
                               : 'Any Web3 Wallet Supported'}
                           </span>
+                          {(wallet.isConnected || user?.walletAddress) && (
+                            <span className="font-mono text-[11px] font-semibold text-emerald-800 block tabular-nums break-words">
+                              Balance:{' '}
+                              {wallet.isConnected
+                                ? `${wallet.balanceAlt ?? '0.00'} ALT · ${wallet.balanceEth ?? '0.0000'} ${wallet.nativeSymbol}`
+                                : `${userAccountBalance?.anaguAlt ?? '0.00'} ALT · ${userAccountBalance?.nativePol ?? '0.0000'} POL`}
+                            </span>
+                          )}
                           <span className="text-[11px] text-slate-500 block">
-                            Polygon ERC-721 Title · ERC-20 &amp; Web3 Wallet Settlement
+                            {wallet.isConnected &&
+                            Number.parseFloat((wallet.balanceEth || '0').replace(/,/g, '')) <= 0
+                              ? 'Zero-gas MetaMask signature verification active (no POL needed)'
+                              : 'Polygon ERC-721 Title · ERC-20 & Web3 Wallet Settlement'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                          {wallet.isConnected && (
+                            <button
+                              type="button"
+                              disabled={wallet.isRefreshingBalance}
+                              onClick={() => void wallet.refreshBalance()}
+                              className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:underline whitespace-nowrap disabled:opacity-50"
+                            >
+                              {wallet.isRefreshingBalance ? 'Syncing...' : 'Refresh'}
+                            </button>
+                          )}
                           {wallet.isConnected && wallet.provider && (
                             <button
                               type="button"

@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { fetchAuthUser, type ClientSessionUser } from '../lib/client-auth';
+import { fetchAnaguWalletBalance, type AnaguBalanceResult } from '../lib/metamask';
 import MetaMaskConnectButton from './MetaMaskConnectButton';
+import { useWallet } from './WalletContext';
 import SiteHeader from './SiteHeader';
 import SiteFooter from './SiteFooter';
 import ParcelImage from './marketplace/ParcelImage';
@@ -21,7 +23,9 @@ export default function HomePortalClient({
   verifiedAvailableCount,
   unverifiedAvailableCount,
 }: HomePortalClientProps) {
+  const wallet = useWallet();
   const [currentUser, setCurrentUser] = useState<ClientSessionUser | null>(initialUser);
+  const [linkedBalance, setLinkedBalance] = useState<AnaguBalanceResult | null>(null);
 
   useEffect(() => {
     setCurrentUser(initialUser);
@@ -43,6 +47,36 @@ export default function HomePortalClient({
       window.removeEventListener('anagu-auth-changed', sync);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const targetAddr =
+      wallet.isConnected && wallet.address
+        ? wallet.address
+        : currentUser?.walletAddress || null;
+    if (!currentUser || !targetAddr || (wallet.isConnected && wallet.balanceAlt !== null)) {
+      return;
+    }
+    fetchAnaguWalletBalance(targetAddr)
+      .then((res) => {
+        if (active) setLinkedBalance(res);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentUser, wallet.address, wallet.balanceAlt, wallet.isConnected]);
+
+  const effectiveAddress =
+    wallet.isConnected && wallet.address ? wallet.address : currentUser?.walletAddress || null;
+  const displayAlt =
+    wallet.isConnected && wallet.balanceAlt !== null
+      ? wallet.balanceAlt
+      : linkedBalance?.anaguAlt ?? '0.00';
+  const displayNative =
+    wallet.isConnected && wallet.balanceEth !== null
+      ? `${wallet.balanceEth} ${wallet.nativeSymbol}`
+      : `${linkedBalance?.nativePol ?? '0.0000'} POL`;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -89,8 +123,34 @@ export default function HomePortalClient({
                     </Link>
                   </div>
 
-                  <div className="mt-4 sm:mt-5 flex flex-wrap items-center gap-3">
+                  <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                     <MetaMaskConnectButton className="w-full sm:w-auto" />
+                    {effectiveAddress && (
+                      <div className="px-3.5 py-2.5 rounded-md border border-emerald-200 bg-emerald-50/70 text-xs flex flex-wrap items-center justify-between gap-2 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                          <span className="text-slate-600 font-medium">
+                            {wallet.isConnected ? 'Wallet Balance:' : 'ANAGU Wallet:'}
+                          </span>
+                          <span className="font-mono font-bold text-emerald-800 tabular-nums break-words">
+                            {displayAlt} ALT
+                          </span>
+                          <span className="text-slate-400" aria-hidden="true">·</span>
+                          <span className="font-mono text-slate-800 tabular-nums">
+                            {displayNative}
+                          </span>
+                        </div>
+                        {wallet.isConnected && (
+                          <button
+                            type="button"
+                            disabled={wallet.isRefreshingBalance}
+                            onClick={() => void wallet.refreshBalance()}
+                            className="text-[11px] font-semibold text-emerald-800 hover:underline disabled:opacity-50 shrink-0"
+                          >
+                            {wallet.isRefreshingBalance ? 'Syncing...' : 'Refresh'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (

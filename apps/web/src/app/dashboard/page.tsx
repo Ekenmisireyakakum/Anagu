@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import { useWallet } from '../../components/WalletContext';
 import { clearClientSessionToken, getAuthHeaders } from '../../lib/client-auth';
+import { formatCompactTokenBalance } from '../../lib/metamask';
 import ApplicationsPanel from '../../components/dashboard/ApplicationsPanel';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
 import SubmitApplicationPanel from '../../components/dashboard/SubmitApplicationPanel';
@@ -286,11 +287,15 @@ export default function DashboardPage() {
               <>
                 <button
                   type="button"
+                  title={`${wallet.walletLabel}: ${wallet.address} · ${wallet.balanceAlt ?? '0.00'} ALT · ${wallet.balanceEth ?? '0.0000'} ${wallet.nativeSymbol}`}
                   onClick={() => wallet.openModal()}
-                  className="px-2.5 py-1 font-mono bg-amber-50 text-amber-900 border border-amber-200 rounded hover:bg-amber-100 transition-colors"
+                  className="px-2.5 py-1.5 font-mono bg-amber-50 text-amber-900 border border-amber-200 rounded hover:bg-amber-100 transition-colors max-w-full truncate"
                 >
-                  MetaMask: {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
-                  {wallet.balanceEth !== null ? ` (${wallet.balanceEth} ETH)` : ''}
+                  {wallet.walletLabel}: {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
+                  {wallet.balanceAlt !== null
+                    ? ` · ${formatCompactTokenBalance(wallet.balanceAlt)} ALT`
+                    : ''}
+                  {wallet.balanceEth !== null ? ` · ${wallet.balanceEth} ${wallet.nativeSymbol}` : ''}
                 </button>
                 {!wallet.isBesuNetwork && (
                   <button

@@ -3,6 +3,8 @@ export interface ClientSessionUser {
   fullName: string;
   role: string;
   email?: string;
+  walletAddress?: string;
+  walletVerified?: boolean;
 }
 
 // Keep fallback Bearer token strictly in JS memory rather than web storage.

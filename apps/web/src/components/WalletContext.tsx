@@ -20,12 +20,14 @@ import {
   createMetaMaskSdkSession,
   discoverAllWalletProviders,
   discoverWalletProvider,
+  fetchAnaguWalletBalance,
   formatMetaMaskError,
   getChainDisplayName,
   getCoinbaseWalletDeepLink,
   getMetaMaskAccounts,
   getMetaMaskChainId,
   getMetaMaskDeepLink,
+  getNativeCurrencySymbol,
   getTrustWalletDeepLink,
   getWalletBalanceEth,
   getWalletLabel,
@@ -60,6 +62,11 @@ interface WalletContextValue {
   chainName: string;
   isBesuNetwork: boolean;
   balanceEth: string | null;
+  balanceAlt: string | null;
+  polygonPolBalance: string | null;
+  nativeSymbol: 'POL' | 'ETH';
+  isRefreshingBalance: boolean;
+  refreshBalance: () => Promise<void>;
   isConnecting: boolean;
   sdkConnecting: boolean;
   sdkUri: string | null;
@@ -109,6 +116,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [chainId, setChainId] = useState<number | null>(null);
   const [balanceEth, setBalanceEth] = useState<string | null>(null);
+  const [balanceAlt, setBalanceAlt] = useState<string | null>(null);
+  const [polygonPolBalance, setPolygonPolBalance] = useState<string | null>(null);
+  const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [sdkConnecting, setSdkConnecting] = useState(false);
   const [sdkUri, setSdkUri] = useState<string | null>(null);
@@ -123,6 +133,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const addressRef = useRef<string | null>(null);
   const providerRef = useRef<Eip1193Provider | null>(null);
+  const chainIdRef = useRef<number | null>(null);
+  const walletTypeRef = useRef<WalletProviderType | null>(null);
+  const walletNameRef = useRef<string>('Web3 Wallet');
   const sdkTerminateRef = useRef<(() => Promise<void>) | null>(null);
   const listenerCleanupRef = useRef<(() => void) | null>(null);
 
@@ -134,23 +147,85 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     providerRef.current = provider;
   }, [provider]);
 
+  useEffect(() => {
+    chainIdRef.current = chainId;
+  }, [chainId]);
+
+  useEffect(() => {
+    walletTypeRef.current = walletType;
+  }, [walletType]);
+
+  useEffect(() => {
+    walletNameRef.current = walletName;
+  }, [walletName]);
+
   const syncAccountState = useCallback(
     async (activeProvider: Eip1193Provider, acct: string | null) => {
       if (!acct) {
+        addressRef.current = null;
         setAddress(null);
         setBalanceEth(null);
+        setBalanceAlt(null);
+        setPolygonPolBalance(null);
         return;
       }
+      addressRef.current = acct;
+      providerRef.current = activeProvider;
       setAddress(acct);
-      const [cid, bal] = await Promise.all([
+      const [cid, bal, anaguBal] = await Promise.all([
         getMetaMaskChainId(activeProvider).catch(() => null),
         getWalletBalanceEth(activeProvider, acct),
+        fetchAnaguWalletBalance(acct),
       ]);
+      chainIdRef.current = cid;
       setChainId(cid);
-      setBalanceEth(bal);
+      setBalanceAlt(anaguBal.anaguAlt);
+      setPolygonPolBalance(anaguBal.nativePol);
+      if (
+        (cid === 80002 || cid === 137 || cid === null) &&
+        (!bal || bal === '0.0000') &&
+        anaguBal.nativePol &&
+        anaguBal.nativePol !== '0.0000'
+      ) {
+        setBalanceEth(anaguBal.nativePol);
+      } else {
+        setBalanceEth(bal);
+      }
     },
     [],
   );
+
+  const refreshBalance = useCallback(async () => {
+    const activeProvider = providerRef.current;
+    const activeAddress = addressRef.current;
+    if (!activeAddress) return;
+    setIsRefreshingBalance(true);
+    try {
+      const [cid, bal, anaguBal] = await Promise.all([
+        activeProvider
+          ? getMetaMaskChainId(activeProvider).catch(() => chainIdRef.current)
+          : Promise.resolve(chainIdRef.current),
+        activeProvider ? getWalletBalanceEth(activeProvider, activeAddress) : Promise.resolve('0.0000'),
+        fetchAnaguWalletBalance(activeAddress),
+      ]);
+      chainIdRef.current = cid;
+      setChainId(cid);
+      setBalanceAlt(anaguBal.anaguAlt);
+      setPolygonPolBalance(anaguBal.nativePol);
+      if (
+        (cid === 80002 || cid === 137 || cid === null) &&
+        (!bal || bal === '0.0000') &&
+        anaguBal.nativePol &&
+        anaguBal.nativePol !== '0.0000'
+      ) {
+        setBalanceEth(anaguBal.nativePol);
+      } else {
+        setBalanceEth(bal);
+      }
+    } finally {
+      setIsRefreshingBalance(false);
+    }
+  }, []);
 
   const attachProviderListeners = useCallback(
     (targetProvider: Eip1193Provider) => {
@@ -167,10 +242,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const handleChainChanged = (chainHexArg: unknown) => {
         const hex = typeof chainHexArg === 'string' ? chainHexArg : '';
         const parsed = hex ? Number.parseInt(hex, 16) : null;
-        setChainId(Number.isFinite(parsed) ? parsed : null);
+        const nextCid = Number.isFinite(parsed) ? parsed : null;
+        chainIdRef.current = nextCid;
+        setChainId(nextCid);
         const currentAddr = addressRef.current;
         if (currentAddr) {
-          void getWalletBalanceEth(targetProvider, currentAddr).then(setBalanceEth);
+          void Promise.all([
+            getWalletBalanceEth(targetProvider, currentAddr),
+            fetchAnaguWalletBalance(currentAddr),
+          ]).then(([bal, anaguBal]) => {
+            setBalanceAlt(anaguBal.anaguAlt);
+            setPolygonPolBalance(anaguBal.nativePol);
+            if (
+              (nextCid === 80002 || nextCid === 137 || nextCid === null) &&
+              (!bal || bal === '0.0000') &&
+              anaguBal.nativePol &&
+              anaguBal.nativePol !== '0.0000'
+            ) {
+              setBalanceEth(anaguBal.nativePol);
+            } else {
+              setBalanceEth(bal);
+            }
+          });
         }
       };
 
@@ -274,6 +367,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         if (hasSavedBrowserSignerWallet()) {
           const sessionWallet = createBrowserSignerProvider();
+          providerRef.current = sessionWallet.provider;
+          walletTypeRef.current = 'browser_signer';
+          walletNameRef.current = 'Browser Web3 Wallet';
           setProvider(sessionWallet.provider);
           setWalletType('browser_signer');
           setWalletName('Browser Web3 Wallet');
@@ -290,6 +386,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             try {
               const accounts = await getMetaMaskAccounts(w.provider);
               if (mounted && accounts.length > 0) {
+                providerRef.current = w.provider;
+                walletTypeRef.current = w.walletType;
+                walletNameRef.current = w.name;
                 setProvider(w.provider);
                 setWalletType(w.walletType);
                 setWalletName(w.name);
@@ -305,13 +404,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
 
         if (mounted && all[0]) {
+          providerRef.current = all[0].provider;
+          walletTypeRef.current = all[0].walletType;
+          walletNameRef.current = all[0].name;
           setProvider(all[0].provider);
           setWalletType(all[0].walletType);
           setWalletName(all[0].name);
           attachProviderListeners(all[0].provider);
           if (!inEmbeddedFrame) {
             const cid = await getMetaMaskChainId(all[0].provider).catch(() => null);
-            if (mounted) setChainId(cid);
+            if (mounted) {
+              chainIdRef.current = cid;
+              setChainId(cid);
+            }
           }
         }
       })
@@ -375,6 +480,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           return { address: null, error: msg };
         }
 
+        providerRef.current = match.provider;
+        walletTypeRef.current = match.walletType;
+        walletNameRef.current = match.name;
         setProvider(match.provider);
         setWalletType(match.walletType);
         setWalletName(match.name);
@@ -417,6 +525,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           setError(msg);
           return { address: null, error: msg };
         }
+        providerRef.current = found.provider;
+        walletTypeRef.current = found.walletType;
+        walletNameRef.current = found.walletName;
         setProvider(found.provider);
         setWalletType(found.walletType);
         setWalletName(found.walletName);
@@ -460,11 +571,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           listenerCleanupRef.current();
           listenerCleanupRef.current = null;
         }
+        const label = importedPrivateKey?.trim() ? 'Imported Web3 Wallet' : 'Browser Web3 Wallet';
+        providerRef.current = sessionWallet.provider;
+        walletTypeRef.current = 'browser_signer';
+        walletNameRef.current = label;
         setProvider(sessionWallet.provider);
         setWalletType('browser_signer');
-        setWalletName(
-          importedPrivateKey?.trim() ? 'Imported Web3 Wallet' : 'Browser Web3 Wallet',
-        );
+        setWalletName(label);
         setConnectionMethod('extension');
         await syncAccountState(sessionWallet.provider, sessionWallet.address);
         return { address: sessionWallet.address };
@@ -535,6 +648,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       const session = await Promise.race([sdkPromise, timeoutPromise]);
       sdkTerminateRef.current = session.terminate;
+      providerRef.current = session.provider;
+      walletTypeRef.current = 'metamask';
+      walletNameRef.current = 'MetaMask Mobile';
       setProvider(session.provider);
       setWalletType('metamask');
       setWalletName('MetaMask Mobile');
@@ -597,9 +713,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       listenerCleanupRef.current = null;
     }
     clearBrowserSignerWallet();
+    providerRef.current = null;
+    addressRef.current = null;
+    chainIdRef.current = null;
+    walletTypeRef.current = null;
+    walletNameRef.current = 'Web3 Wallet';
     setProvider(null);
     setAddress(null);
+    setChainId(null);
     setBalanceEth(null);
+    setBalanceAlt(null);
+    setPolygonPolBalance(null);
     setWalletType(null);
     setWalletName('Web3 Wallet');
     setConnectionMethod(null);
@@ -618,10 +742,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Connect a Web3 wallet first before switching networks.');
       }
       const nextChain = await switchEvmChain(activeProvider, targetChainId);
+      chainIdRef.current = nextChain;
       setChainId(nextChain);
       if (addressRef.current) {
-        const bal = await getWalletBalanceEth(activeProvider, addressRef.current);
-        setBalanceEth(bal);
+        const [bal, anaguBal] = await Promise.all([
+          getWalletBalanceEth(activeProvider, addressRef.current),
+          fetchAnaguWalletBalance(addressRef.current),
+        ]);
+        setBalanceAlt(anaguBal.anaguAlt);
+        setPolygonPolBalance(anaguBal.nativePol);
+        setBalanceEth(
+          (nextChain === 80002 || nextChain === 137) && (!bal || bal === '0.0000')
+            ? anaguBal.nativePol
+            : bal,
+        );
       }
       return true;
     } catch (err) {
@@ -639,9 +773,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Connect a Web3 wallet first.');
       }
       const nextChain = await switchOrAddBesuChain(activeProvider);
+      chainIdRef.current = nextChain;
       setChainId(nextChain);
       if (addressRef.current) {
-        const bal = await getWalletBalanceEth(activeProvider, addressRef.current);
+        const [bal, anaguBal] = await Promise.all([
+          getWalletBalanceEth(activeProvider, addressRef.current),
+          fetchAnaguWalletBalance(addressRef.current),
+        ]);
+        setBalanceAlt(anaguBal.anaguAlt);
+        setPolygonPolBalance(anaguBal.nativePol);
         setBalanceEth(bal);
       }
       return true;
@@ -667,12 +807,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       try {
         return await signPersonalMessage(activeProvider, signer, message);
       } catch (err) {
-        const formatted = formatMetaMaskError(err, getWalletLabel(walletType, walletName));
+        const formatted = formatMetaMaskError(
+          err,
+          getWalletLabel(walletTypeRef.current, walletNameRef.current),
+        );
         setError(formatted);
         throw new Error(formatted);
       }
     },
-    [connect, openModal, walletName, walletType],
+    [connect, openModal],
   );
 
   const authorizeRegistryAction = useCallback(
@@ -680,27 +823,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       params: Parameters<typeof authorizeLandRegistryAction>[3],
     ): Promise<WalletProofPayload> => {
       setError(null);
+      let activeProvider = providerRef.current;
+      let activeAddr = addressRef.current;
+      let activeChainId = chainIdRef.current;
+      const currentWalletType = walletTypeRef.current;
+      let resolvedWalletName = walletNameRef.current;
+
       const requestedType =
         'walletProvider' in params && params.walletProvider
           ? params.walletProvider
-          : walletType || 'any';
+          : currentWalletType || 'any';
 
-      let activeProvider = providerRef.current;
-      let activeAddr = addressRef.current;
-      let resolvedWalletName = walletName;
+      const inEmbeddedFrame = isRunningInIframe();
+      const canUseConnectedAsIs =
+        Boolean(activeProvider && activeAddr) &&
+        (currentWalletType === 'browser_signer' ||
+          connectionMethod === 'sdk' ||
+          inEmbeddedFrame);
 
-      // If a wallet is already connected and caller didn't force a different specific wallet, use the active Web3 wallet!
       const forceSpecific =
+        !canUseConnectedAsIs &&
         'walletProvider' in params &&
-        params.walletProvider &&
+        Boolean(params.walletProvider) &&
         params.walletProvider !== 'any' &&
-        walletType !== params.walletProvider;
+        currentWalletType !== params.walletProvider;
 
       if (!activeProvider || !activeAddr || forceSpecific) {
-        if (isRunningInIframe()) {
+        if (inEmbeddedFrame) {
           openModal(requestedType === 'any' ? 'all' : requestedType);
           throw new Error(
-            'Connect your Web3 wallet (Browser Wallet, Mobile QR, or Standalone Tab) in the dialog to authorize this land transaction.',
+            'Connect your Web3 wallet (Instant Browser Wallet, Mobile QR, or Standalone Tab) in the dialog to authorize this land transaction.',
           );
         }
         const ext = await discoverWalletProvider(requestedType, 300);
@@ -712,10 +864,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
               res.error || 'Connect your Web3 wallet to complete authorization.',
             );
           }
-          activeProvider = ext.provider;
-          activeAddr = res.address;
-          resolvedWalletName = ext.walletName;
-        } else if (!activeProvider) {
+          activeProvider = providerRef.current || ext.provider;
+          activeAddr = addressRef.current || res.address;
+          activeChainId = chainIdRef.current;
+          resolvedWalletName = walletNameRef.current || ext.walletName;
+        } else if (!activeProvider || !activeAddr) {
           openModal(requestedType === 'any' ? 'all' : requestedType);
           throw new Error(
             `Connect ${getWalletLabel(requestedType)} or any Web3 wallet in the dialog to authorize this land transaction.`,
@@ -730,10 +883,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
         activeProvider = providerRef.current;
         activeAddr = addr;
+        activeChainId = chainIdRef.current;
       }
 
       try {
-        return await authorizeLandRegistryAction(activeProvider, activeAddr, chainId, {
+        return await authorizeLandRegistryAction(activeProvider, activeAddr, activeChainId, {
           ...params,
           walletName: resolvedWalletName,
         });
@@ -743,7 +897,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error(formatted);
       }
     },
-    [chainId, connect, connectWithExtension, openModal, walletName, walletType],
+    [connect, connectWithExtension, connectionMethod, openModal],
   );
 
   const value = useMemo<WalletContextValue>(
@@ -765,6 +919,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       chainName: getChainDisplayName(chainId),
       isBesuNetwork: chainId === BESU_CHAIN_ID,
       balanceEth,
+      balanceAlt,
+      polygonPolBalance,
+      nativeSymbol: getNativeCurrencySymbol(chainId),
+      isRefreshingBalance,
+      refreshBalance,
       isConnecting,
       sdkConnecting,
       sdkUri,
@@ -805,6 +964,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       address,
       chainId,
       balanceEth,
+      balanceAlt,
+      polygonPolBalance,
+      isRefreshingBalance,
+      refreshBalance,
       isConnecting,
       sdkConnecting,
       sdkUri,

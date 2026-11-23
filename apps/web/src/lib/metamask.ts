@@ -262,6 +262,13 @@ export function isRunningInIframe(): boolean {
   }
 }
 
+export function getNativeCurrencySymbol(chainId: number | null): 'POL' | 'ETH' {
+  if (chainId === POLYGON_MAINNET_CHAIN_ID || chainId === POLYGON_AMOY_CHAIN_ID) {
+    return 'POL';
+  }
+  return 'ETH';
+}
+
 export function getChainDisplayName(chainId: number | null): string {
   if (chainId === null) return 'Not Connected';
   if (chainId === POLYGON_MAINNET_CHAIN_ID) return 'Polygon Mainnet (137)';
@@ -616,6 +623,55 @@ export async function getMetaMaskChainId(provider: Eip1193Provider): Promise<num
   return Number.parseInt(hex, 16);
 }
 
+export interface AnaguBalanceResult {
+  nativePol: string;
+  anaguAlt: string;
+  symbol: string;
+}
+
+export async function fetchAnaguWalletBalance(address: string): Promise<AnaguBalanceResult> {
+  if (!address || !ethers.isAddress(address)) {
+    return { nativePol: '0.0000', anaguAlt: '0.00', symbol: 'ALT' };
+  }
+  try {
+    const res = await fetch(`/api/wallet/balance?address=${encodeURIComponent(address)}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      return { nativePol: '0.0000', anaguAlt: '0.00', symbol: 'ALT' };
+    }
+    const data = await res.json();
+    return {
+      nativePol: typeof data.nativePol === 'string' ? data.nativePol : '0.0000',
+      anaguAlt: typeof data.anaguAlt === 'string' ? data.anaguAlt : '0.00',
+      symbol: typeof data.symbol === 'string' ? data.symbol : 'ALT',
+    };
+  } catch {
+    return { nativePol: '0.0000', anaguAlt: '0.00', symbol: 'ALT' };
+  }
+}
+
+export function formatCompactTokenBalance(value: string | null | undefined): string {
+  if (!value) return '0.00';
+  const cleaned = value.replace(/,/g, '').trim();
+  const num = Number.parseFloat(cleaned);
+  if (!Number.isFinite(num)) return value;
+  const abs = Math.abs(num);
+  if (abs >= 1_000_000_000) {
+    const scaled = num / 1_000_000_000;
+    return `${Number.isInteger(scaled) || Math.abs(scaled - Math.round(scaled)) < 0.005 ? Math.round(scaled) : scaled.toFixed(1).replace(/\.0$/, '')}B`;
+  }
+  if (abs >= 1_000_000) {
+    const scaled = num / 1_000_000;
+    return `${scaled.toFixed(1).replace(/\.0$/, '')}M`;
+  }
+  if (abs >= 10_000) {
+    const scaled = num / 1_000;
+    return `${scaled.toFixed(1).replace(/\.0$/, '')}K`;
+  }
+  return value;
+}
+
 export async function getWalletBalanceEth(
   provider: Eip1193Provider,
   address: string,
@@ -629,7 +685,7 @@ export async function getWalletBalanceEth(
       2500,
     )) as string;
     const formatted = Number.parseFloat(ethers.formatEther(weiHex || '0x0'));
-    return formatted.toFixed(4);
+    return Number.isFinite(formatted) ? formatted.toFixed(4) : '0.0000';
   } catch {
     return '0.0000';
   }
@@ -714,17 +770,142 @@ export async function switchOrAddBesuChain(provider: Eip1193Provider): Promise<n
   return switchEvmChain(provider, BESU_CHAIN_ID);
 }
 
+async function resolveActiveSignerAddress(
+  provider: Eip1193Provider,
+  fallbackAddress: string,
+): Promise<string> {
+  const fallback = ethers.getAddress(fallbackAddress);
+  try {
+    const accounts = (await withTimeout(
+      provider.request({ method: 'eth_accounts' }) as Promise<string[]>,
+      1500,
+    )) as string[];
+    if (Array.isArray(accounts) && accounts.length > 0 && ethers.isAddress(accounts[0])) {
+      return ethers.getAddress(accounts[0]);
+    }
+  } catch {
+    // Use fallback address when eth_accounts probe isn't supported
+  }
+  return fallback;
+}
+
 export async function signPersonalMessage(
   provider: Eip1193Provider,
   address: string,
   message: string,
 ): Promise<string> {
+  const signingAddress = await resolveActiveSignerAddress(provider, address);
   const hexMessage = ethers.hexlify(ethers.toUtf8Bytes(message));
-  const sig = (await provider.request({
-    method: 'personal_sign',
-    params: [hexMessage, address],
-  })) as string;
-  return sig;
+  try {
+    const sig = (await provider.request({
+      method: 'personal_sign',
+      params: [hexMessage, signingAddress],
+    })) as string;
+    return sig;
+  } catch (err) {
+    const code = (err as { code?: number })?.code;
+    if (code === 4001 || code === -32002) {
+      throw err;
+    }
+    const sig = (await provider.request({
+      method: 'personal_sign',
+      params: [message, signingAddress],
+    })) as string;
+    return sig;
+  }
+}
+
+async function canExecuteSimulatedTx(
+  provider: Eip1193Provider,
+  fromAddress: string,
+  toAddress: string,
+  data: string,
+  valueHex?: string,
+): Promise<boolean> {
+  try {
+    const txObj: Record<string, string> = {
+      from: fromAddress,
+      to: toAddress,
+      data,
+    };
+    if (valueHex) {
+      txObj.value = valueHex;
+    }
+
+    const [nativeHex, gasPriceHex, estimatedGasHex] = await Promise.all([
+      withTimeout(
+        provider.request({
+          method: 'eth_getBalance',
+          params: [fromAddress, 'latest'],
+        }) as Promise<string>,
+        2500,
+      ).catch(() => null),
+      withTimeout(
+        provider.request({
+          method: 'eth_gasPrice',
+        }) as Promise<string>,
+        2500,
+      ).catch(() => null),
+      withTimeout(
+        provider.request({
+          method: 'eth_estimateGas',
+          params: [txObj],
+        }) as Promise<string>,
+        3000,
+      ).catch(() => null),
+    ]);
+
+    if (!nativeHex || !estimatedGasHex) return false;
+    const nativeBal = BigInt(nativeHex);
+    const estimatedGas = BigInt(estimatedGasHex);
+    const gasPrice = gasPriceHex ? BigInt(gasPriceHex) : BigInt(30_000_000_000);
+    const requiredGasCost = (estimatedGas * gasPrice * BigInt(12)) / BigInt(10);
+    const txValue = valueHex ? BigInt(valueHex) : BigInt(0);
+
+    return nativeBal >= requiredGasCost + txValue;
+  } catch {
+    return false;
+  }
+}
+
+async function canExecuteErc20Transfer(
+  provider: Eip1193Provider,
+  fromAddress: string,
+  toAddress: string,
+  requiredTokensWei: bigint,
+): Promise<{ feasible: boolean; data: string }> {
+  const erc20Iface = new ethers.Interface(ERC20_ABI);
+  const data = erc20Iface.encodeFunctionData('transfer', [
+    ethers.getAddress(toAddress),
+    requiredTokensWei,
+  ]);
+  if (!ERC20_TOKEN_ADDRESS || !ethers.isAddress(ERC20_TOKEN_ADDRESS)) {
+    return { feasible: false, data };
+  }
+  try {
+    const tokenAddr = ethers.getAddress(ERC20_TOKEN_ADDRESS);
+    const balCallData = erc20Iface.encodeFunctionData('balanceOf', [fromAddress]);
+    const tokenHex = (await withTimeout(
+      provider.request({
+        method: 'eth_call',
+        params: [{ to: tokenAddr, data: balCallData }, 'latest'],
+      }) as Promise<string>,
+      2500,
+    ).catch(() => null)) as string | null;
+
+    if (!tokenHex || tokenHex === '0x') {
+      return { feasible: false, data };
+    }
+    const tokenBal = BigInt(tokenHex);
+    if (tokenBal < requiredTokensWei) {
+      return { feasible: false, data };
+    }
+
+    const gasFeasible = await canExecuteSimulatedTx(provider, fromAddress, tokenAddr, data);
+    return { feasible: gasFeasible, data };
+  } catch {
+    return { feasible: false, data };
+  }
 }
 
 export async function authorizeLandRegistryAction(
@@ -772,13 +953,17 @@ export async function authorizeLandRegistryAction(
         walletName?: string;
       },
 ): Promise<WalletProofPayload> {
-  const checksumSigner = ethers.getAddress(address);
+  const checksumSigner = await resolveActiveSignerAddress(provider, address);
+  let activeChainId = chainId;
+  if (activeChainId === null) {
+    activeChainId = await getMetaMaskChainId(provider).catch(() => null);
+  }
   let onChainTxHash: string | undefined;
 
   const isPolygonOrBesuChain =
-    chainId === POLYGON_MAINNET_CHAIN_ID ||
-    chainId === POLYGON_AMOY_CHAIN_ID ||
-    chainId === BESU_CHAIN_ID;
+    activeChainId === POLYGON_MAINNET_CHAIN_ID ||
+    activeChainId === POLYGON_AMOY_CHAIN_ID ||
+    activeChainId === BESU_CHAIN_ID;
 
   if (params.kind === 'PURCHASE_LAND') {
     if (
@@ -787,34 +972,62 @@ export async function authorizeLandRegistryAction(
       ethers.isAddress(ERC20_TOKEN_ADDRESS) &&
       ethers.isAddress(params.sellerAddress)
     ) {
-      const erc20Iface = new ethers.Interface(ERC20_ABI);
       const tokenAmount = ethers.parseEther(params.priceEth || '1');
-      const data = erc20Iface.encodeFunctionData('transfer', [
-        ethers.getAddress(params.sellerAddress),
-        tokenAmount,
-      ]);
-      onChainTxHash = (await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: checksumSigner,
-            to: ethers.getAddress(ERC20_TOKEN_ADDRESS),
-            data,
-          },
-        ],
-      })) as string;
-    } else if (chainId === BESU_CHAIN_ID && ethers.isAddress(params.sellerAddress)) {
+      const { feasible, data } =
+        activeChainId === BESU_CHAIN_ID
+          ? {
+              feasible: true,
+              data: new ethers.Interface(ERC20_ABI).encodeFunctionData('transfer', [
+                ethers.getAddress(params.sellerAddress),
+                tokenAmount,
+              ]),
+            }
+          : await canExecuteErc20Transfer(
+              provider,
+              checksumSigner,
+              params.sellerAddress,
+              tokenAmount,
+            );
+
+      if (feasible) {
+        try {
+          onChainTxHash = (await provider.request({
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: checksumSigner,
+                to: ethers.getAddress(ERC20_TOKEN_ADDRESS),
+                data,
+              },
+            ],
+          })) as string;
+        } catch (txErr) {
+          const code = (txErr as { code?: number })?.code;
+          if (code === 4001 || code === -32002) {
+            throw txErr;
+          }
+          // Fall through to EIP-191 personal_sign cryptographic verification if on-chain tx cannot settle
+        }
+      }
+    } else if (activeChainId === BESU_CHAIN_ID && ethers.isAddress(params.sellerAddress)) {
       const weiHex = ethers.toBeHex(ethers.parseEther(params.priceEth || '0.01'));
-      onChainTxHash = (await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: checksumSigner,
-            to: ethers.getAddress(params.sellerAddress),
-            value: weiHex,
-          },
-        ],
-      })) as string;
+      try {
+        onChainTxHash = (await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: checksumSigner,
+              to: ethers.getAddress(params.sellerAddress),
+              value: weiHex,
+            },
+          ],
+        })) as string;
+      } catch (txErr) {
+        const code = (txErr as { code?: number })?.code;
+        if (code === 4001 || code === -32002) {
+          throw txErr;
+        }
+      }
     }
   } else if (
     LAND_REGISTRY_ADDRESS &&
@@ -844,16 +1057,30 @@ export async function authorizeLandRegistryAction(
       ]);
     }
 
-    onChainTxHash = (await provider.request({
-      method: 'eth_sendTransaction',
-      params: [
-        {
-          from: checksumSigner,
-          to: LAND_REGISTRY_ADDRESS,
-          data,
-        },
-      ],
-    })) as string;
+    const registryAddr = ethers.getAddress(LAND_REGISTRY_ADDRESS);
+    const registryFeasible =
+      activeChainId === BESU_CHAIN_ID ||
+      (await canExecuteSimulatedTx(provider, checksumSigner, registryAddr, data));
+
+    if (registryFeasible) {
+      try {
+        onChainTxHash = (await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: checksumSigner,
+              to: registryAddr,
+              data,
+            },
+          ],
+        })) as string;
+      } catch (txErr) {
+        const code = (txErr as { code?: number })?.code;
+        if (code === 4001 || code === -32002) {
+          throw txErr;
+        }
+      }
+    }
   }
 
   const timestamp = new Date().toISOString();
@@ -886,12 +1113,13 @@ export async function authorizeLandRegistryAction(
   ].join('\n');
 
   const signature = await signPersonalMessage(provider, checksumSigner, message);
+  const recovered = ethers.getAddress(ethers.verifyMessage(message, signature));
 
   return {
     message,
     signature,
-    signerAddress: checksumSigner,
-    chainId,
+    signerAddress: recovered,
+    chainId: activeChainId,
     onChainTxHash,
     walletName: walletTag,
   };
