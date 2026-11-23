@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchAuthUser } from '../lib/client-auth';
+import { fetchAuthUser, getCachedAuthUser, hasResolvedAuth } from '../lib/client-auth';
 import SiteHeader from './SiteHeader';
 import SiteFooter from './SiteFooter';
 
@@ -23,8 +23,14 @@ export default function AuthRequiredGate({
   initialAuthenticated,
   includeFooter = false,
 }: AuthRequiredGateProps) {
-  const [authChecked, setAuthChecked] = useState(initialAuthenticated !== undefined);
-  const [authenticated, setAuthenticated] = useState(Boolean(initialAuthenticated));
+  const cachedUser = typeof window !== 'undefined' ? getCachedAuthUser() : null;
+  const cachedResolved = typeof window !== 'undefined' && hasResolvedAuth();
+  const [authChecked, setAuthChecked] = useState(
+    () => initialAuthenticated === true || cachedResolved,
+  );
+  const [authenticated, setAuthenticated] = useState(
+    () => initialAuthenticated === true || Boolean(cachedUser),
+  );
 
   useEffect(() => {
     let active = true;
@@ -66,7 +72,7 @@ export default function AuthRequiredGate({
     const encodedNext = encodeURIComponent(nextPath);
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
-        <SiteHeader initialUser={null} />
+        <SiteHeader />
         <main className="flex-1 flex items-center justify-center px-4 sm:px-6 py-14">
           <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 sm:p-8 text-center shadow-sm space-y-4">
             <p className="text-xs font-mono font-semibold text-emerald-700">

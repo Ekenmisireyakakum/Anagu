@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { clearClientSessionToken, fetchAuthUser } from '../lib/client-auth';
+import {
+  clearClientSessionToken,
+  fetchAuthUser,
+  getCachedAuthUser,
+  hasResolvedAuth,
+  setCachedAuthUser,
+} from '../lib/client-auth';
 import MetaMaskConnectButton from './MetaMaskConnectButton';
 
 export interface HeaderUser {
@@ -16,8 +22,12 @@ export default function SiteHeader({ initialUser }: { initialUser?: HeaderUser |
   const pathname = usePathname();
   const router = useRouter();
   const isAdminRoute = Boolean(pathname?.startsWith('/admin'));
-  const [user, setUser] = useState<HeaderUser | null>(initialUser ?? null);
-  const [authResolved, setAuthResolved] = useState(initialUser !== undefined);
+  const [user, setUser] = useState<HeaderUser | null>(
+    () => initialUser ?? (typeof window !== 'undefined' ? getCachedAuthUser() : null),
+  );
+  const [authResolved, setAuthResolved] = useState<boolean>(
+    () => Boolean(initialUser) || (typeof window !== 'undefined' && hasResolvedAuth()),
+  );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
@@ -46,7 +56,8 @@ export default function SiteHeader({ initialUser }: { initialUser?: HeaderUser |
   }, [accountMenuOpen]);
 
   useEffect(() => {
-    if (initialUser !== undefined) {
+    if (initialUser) {
+      setCachedAuthUser(initialUser);
       setUser(initialUser);
       setAuthResolved(true);
     }
@@ -237,13 +248,27 @@ export default function SiteHeader({ initialUser }: { initialUser?: HeaderUser |
           ) : authResolved ? (
             <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-xs sm:text-sm font-semibold">
               <Link
-                href="/login"
+                href={
+                  pathname &&
+                  pathname !== '/' &&
+                  pathname !== '/login' &&
+                  pathname !== '/register'
+                    ? `/login?next=${encodeURIComponent(pathname)}`
+                    : '/login'
+                }
                 className="px-3 sm:px-4 py-2 rounded-md border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
                 Log In
               </Link>
               <Link
-                href="/register"
+                href={
+                  pathname &&
+                  pathname !== '/' &&
+                  pathname !== '/login' &&
+                  pathname !== '/register'
+                    ? `/register?next=${encodeURIComponent(pathname)}`
+                    : '/register'
+                }
                 className="px-3.5 sm:px-4 py-2 rounded-md bg-emerald-700 text-white hover:bg-emerald-800 transition-colors whitespace-nowrap"
               >
                 Sign Up

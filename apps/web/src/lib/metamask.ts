@@ -165,7 +165,7 @@ export function createBrowserSignerProvider(importedPrivateKey?: string): {
   chainId: number;
 } {
   let pk = '';
-  let currentChainId = BESU_CHAIN_ID;
+  let currentChainId = POLYGON_CHAIN_ID;
   if (typeof window !== 'undefined') {
     try {
       pk = window.sessionStorage.getItem(BROWSER_SIGNER_PK_KEY) || '';
@@ -206,7 +206,7 @@ export function createBrowserSignerProvider(importedPrivateKey?: string): {
         case 'eth_chainId':
           return `0x${currentChainId.toString(16)}`;
         case 'eth_getBalance':
-          // Provide demo 2.5000 ETH balance for Besu / testnet checkout UI visibility
+          // Provide demo 2.5000 POL balance for Polygon / testnet checkout UI visibility
           return ethers.toBeHex(ethers.parseEther('2.5'));
         case 'wallet_switchEthereumChain': {
           const list = Array.isArray(params) ? params : [];
@@ -263,7 +263,7 @@ export function isRunningInIframe(): boolean {
 }
 
 export function getNativeCurrencySymbol(chainId: number | null): 'POL' | 'ETH' {
-  if (chainId === POLYGON_MAINNET_CHAIN_ID || chainId === POLYGON_AMOY_CHAIN_ID) {
+  if (chainId === null || chainId === POLYGON_MAINNET_CHAIN_ID || chainId === POLYGON_AMOY_CHAIN_ID) {
     return 'POL';
   }
   return 'ETH';
@@ -1100,7 +1100,7 @@ export async function authorizeLandRegistryAction(
     ...('listingId' in params
       ? [
           `Listing ID: ${params.listingId}`,
-          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} ${ERC20_TOKEN_ADDRESS ? 'ALT' : 'ETH'})`,
+          `Consideration: ${params.priceUsd ? `$${params.priceUsd.toLocaleString()} USD · ` : ''}NGN ${params.priceNgn.toLocaleString()} (${params.priceEth} ${ERC20_TOKEN_ADDRESS ? 'ALT' : 'POL'})`,
           `Seller Settlement Wallet: ${params.sellerAddress}`,
         ]
       : []),

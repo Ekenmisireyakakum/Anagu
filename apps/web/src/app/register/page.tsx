@@ -85,7 +85,7 @@ export default function RegisterPage() {
         throw new Error(verified.message || 'Wallet sign-up verification failed');
       }
 
-      setClientSessionToken(verified.accessToken);
+      setClientSessionToken(verified.accessToken, verified.user ?? null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('anagu-auth-changed'));
       }
@@ -171,7 +171,7 @@ export default function RegisterPage() {
         );
         return;
       }
-      setClientSessionToken(data.accessToken);
+      setClientSessionToken(data.accessToken, data.user ?? null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('anagu-auth-changed'));
       }
@@ -300,9 +300,10 @@ export default function RegisterPage() {
                     </div>
                     <div className="bg-white border border-emerald-200/80 rounded-md p-2.5">
                       <dt className="text-[11px] text-slate-500">Balance &amp; Network</dt>
-                      <dd className="font-mono font-semibold text-slate-900 mt-0.5">
+                      <dd className="font-mono font-semibold text-slate-900 mt-0.5 tabular-nums">
+                        {wallet.balanceAlt !== null ? `${wallet.balanceAlt} ALT · ` : ''}
                         {wallet.balanceEth !== null ? `${wallet.balanceEth} ` : ''}
-                        {isPolygon ? 'POL' : 'ETH'}
+                        {wallet.nativeSymbol}
                       </dd>
                       <dd className="text-[11px] text-slate-600 truncate">{wallet.chainName}</dd>
                     </div>
@@ -311,14 +312,14 @@ export default function RegisterPage() {
                   {!isPolygon && (
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
                       <span className="text-slate-600">
-                        Switch your wallet to Polygon for ERC-721 &amp; ERC-20 land transactions:
+                        Switch your wallet to Polygon Amoy (80002) for POL &amp; ALT land transactions:
                       </span>
                       <button
                         type="button"
                         onClick={() => void wallet.switchChain(POLYGON_CHAIN_ID)}
-                        className="px-2.5 py-1 font-semibold text-purple-900 bg-purple-100 border border-purple-200 rounded hover:bg-purple-200"
+                        className="px-2.5 py-1 font-semibold text-emerald-900 bg-emerald-100 border border-emerald-300 rounded hover:bg-emerald-200"
                       >
-                        Switch to Polygon
+                        Switch to Polygon Amoy (80002)
                       </button>
                     </div>
                   )}
@@ -448,7 +449,10 @@ export default function RegisterPage() {
           <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
             <span>
               Already have an account?{' '}
-              <Link href="/login" className="font-semibold text-emerald-700 hover:underline">
+              <Link
+                href={nextPath !== '/' ? `/login?next=${encodeURIComponent(nextPath)}` : '/login'}
+                className="font-semibold text-emerald-700 hover:underline"
+              >
                 Sign In →
               </Link>
             </span>

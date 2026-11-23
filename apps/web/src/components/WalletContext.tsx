@@ -13,7 +13,6 @@ import {
 import QRCode from 'qrcode';
 import {
   authorizeLandRegistryAction,
-  BESU_CHAIN_ID,
   clearBrowserSignerWallet,
   connectMetaMaskAccounts,
   createBrowserSignerProvider,
@@ -33,9 +32,11 @@ import {
   getWalletLabel,
   hasSavedBrowserSignerWallet,
   isRunningInIframe,
+  POLYGON_AMOY_CHAIN_ID,
+  POLYGON_CHAIN_ID,
+  POLYGON_MAINNET_CHAIN_ID,
   signPersonalMessage,
   switchEvmChain,
-  switchOrAddBesuChain,
   walletFromEip6963Event,
   type DiscoveredWallet,
   type Eip1193Provider,
@@ -60,7 +61,7 @@ interface WalletContextValue {
   address: string | null;
   chainId: number | null;
   chainName: string;
-  isBesuNetwork: boolean;
+  isPolygonNetwork: boolean;
   balanceEth: string | null;
   balanceAlt: string | null;
   polygonPolBalance: string | null;
@@ -93,7 +94,7 @@ interface WalletContextValue {
   connectWithSdk: () => Promise<{ address: string | null; error?: string }>;
   cancelSdkConnect: () => void;
   disconnect: () => void;
-  switchToBesu: () => Promise<boolean>;
+  switchToPolygon: () => Promise<boolean>;
   switchChain: (targetChainId: number) => Promise<boolean>;
   signMessage: (message: string, targetAddress?: string) => Promise<string>;
   authorizeRegistryAction: (
@@ -764,32 +765,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const switchToBesu = useCallback(async (): Promise<boolean> => {
-    setError(null);
-    try {
-      const activeProvider =
-        providerRef.current || (await discoverWalletProvider('any', 300))?.provider;
-      if (!activeProvider) {
-        throw new Error('Connect a Web3 wallet first.');
-      }
-      const nextChain = await switchOrAddBesuChain(activeProvider);
-      chainIdRef.current = nextChain;
-      setChainId(nextChain);
-      if (addressRef.current) {
-        const [bal, anaguBal] = await Promise.all([
-          getWalletBalanceEth(activeProvider, addressRef.current),
-          fetchAnaguWalletBalance(addressRef.current),
-        ]);
-        setBalanceAlt(anaguBal.anaguAlt);
-        setPolygonPolBalance(anaguBal.nativePol);
-        setBalanceEth(bal);
-      }
-      return true;
-    } catch (err) {
-      setError(formatMetaMaskError(err));
-      return false;
-    }
-  }, []);
+  const switchToPolygon = useCallback(async (): Promise<boolean> => {
+    return switchChain(POLYGON_CHAIN_ID);
+  }, [switchChain]);
 
   const signMessage = useCallback(
     async (message: string, targetAddress?: string): Promise<string> => {
@@ -917,7 +895,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       address,
       chainId,
       chainName: getChainDisplayName(chainId),
-      isBesuNetwork: chainId === BESU_CHAIN_ID,
+      isPolygonNetwork:
+        chainId === POLYGON_AMOY_CHAIN_ID || chainId === POLYGON_MAINNET_CHAIN_ID,
       balanceEth,
       balanceAlt,
       polygonPolBalance,
@@ -946,7 +925,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connectWithSdk,
       cancelSdkConnect,
       disconnect,
-      switchToBesu,
+      switchToPolygon,
       switchChain,
       signMessage,
       authorizeRegistryAction,
@@ -990,7 +969,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connectWithSdk,
       cancelSdkConnect,
       disconnect,
-      switchToBesu,
+      switchToPolygon,
       switchChain,
       signMessage,
       authorizeRegistryAction,

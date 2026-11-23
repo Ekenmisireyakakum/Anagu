@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { fetchAuthUser } from '../lib/client-auth';
+import { fetchAuthUser, getCachedAuthUser } from '../lib/client-auth';
 
 export default function SiteFooter({
   adminMode = false,
@@ -11,11 +12,16 @@ export default function SiteFooter({
   adminMode?: boolean;
   initialAuthenticated?: boolean;
 }) {
-  const [authenticated, setAuthenticated] = useState(Boolean(initialAuthenticated));
+  const pathname = usePathname();
+  const [authenticated, setAuthenticated] = useState(
+    () =>
+      initialAuthenticated === true ||
+      Boolean(typeof window !== 'undefined' && getCachedAuthUser()),
+  );
 
   useEffect(() => {
-    if (initialAuthenticated !== undefined) {
-      setAuthenticated(initialAuthenticated);
+    if (initialAuthenticated === true) {
+      setAuthenticated(true);
     }
   }, [initialAuthenticated]);
 
@@ -39,6 +45,11 @@ export default function SiteFooter({
       window.removeEventListener('anagu-auth-changed', syncAuth);
     };
   }, [adminMode]);
+
+  const nextQuery =
+    pathname && pathname !== '/' && pathname !== '/login' && pathname !== '/register'
+      ? `?next=${encodeURIComponent(pathname)}`
+      : '';
 
   return (
     <footer className="bg-white border-t border-slate-200 mt-12 sm:mt-16">
@@ -70,10 +81,10 @@ export default function SiteFooter({
               </>
             ) : (
               <>
-                <Link href="/login" className="hover:text-slate-900 whitespace-nowrap py-1">
+                <Link href={`/login${nextQuery}`} className="hover:text-slate-900 whitespace-nowrap py-1">
                   Log In
                 </Link>
-                <Link href="/register" className="hover:text-slate-900 whitespace-nowrap py-1">
+                <Link href={`/register${nextQuery}`} className="hover:text-slate-900 whitespace-nowrap py-1">
                   Sign Up
                 </Link>
               </>

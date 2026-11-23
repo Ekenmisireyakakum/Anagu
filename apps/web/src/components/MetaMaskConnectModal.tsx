@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
-import { BESU_CHAIN_ID, watchLandTokenInWallet } from '../lib/metamask';
+import { watchLandTokenInWallet } from '../lib/metamask';
 import { useWallet } from './WalletContext';
 
 export default function MetaMaskConnectModal() {
@@ -153,73 +153,37 @@ export default function MetaMaskConnectModal() {
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-slate-800">Switch EVM / Polygon Network</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => wallet.switchChain(137)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 137
-                        ? 'bg-emerald-700 text-white border-emerald-700'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Polygon (137)
-                  </button>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-slate-800">Polygon Network (POL &amp; ALT)</div>
+                  <span className="text-[11px] font-mono text-slate-500">{wallet.chainName}</span>
+                </div>
+                {!wallet.isPolygonNetwork && (
+                  <div className="p-2.5 rounded bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                    Your wallet is on <strong>{wallet.chainName}</strong>. Switch to Polygon Amoy (80002) for POL &amp; ALT transactions.
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => wallet.switchChain(80002)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
+                    className={`py-2.5 px-3 text-xs font-semibold rounded border transition-colors ${
                       wallet.chainId === 80002
                         ? 'bg-emerald-700 text-white border-emerald-700'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                     }`}
                   >
-                    Polygon Amoy (80002)
+                    Polygon Amoy Testnet (80002)
                   </button>
                   <button
                     type="button"
-                    onClick={() => wallet.switchChain(1)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 1
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Ethereum (1)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => wallet.switchChain(11155111)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 11155111
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Sepolia (11155111)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => wallet.switchChain(8453)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.chainId === 8453
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Base (8453)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => wallet.switchChain(BESU_CHAIN_ID)}
-                    className={`py-2 px-3 text-xs font-medium rounded border transition-colors ${
-                      wallet.isBesuNetwork
+                    onClick={() => wallet.switchChain(137)}
+                    className={`py-2.5 px-3 text-xs font-semibold rounded border transition-colors ${
+                      wallet.chainId === 137
                         ? 'bg-emerald-700 text-white border-emerald-700'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                     }`}
                   >
-                    Besu QBFT ({BESU_CHAIN_ID})
+                    Polygon Mainnet (137)
                   </button>
                 </div>
               </div>

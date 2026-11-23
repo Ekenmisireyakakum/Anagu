@@ -93,7 +93,7 @@ export default function MetaMaskConnectButton({
         onClick={() => setPopoverOpen((prev) => !prev)}
         className={`${
           compact
-            ? 'px-2.5 sm:px-3.5 py-2 text-xs min-h-[40px] sm:min-h-[36px] max-w-[165px] sm:max-w-[235px] lg:max-w-[270px]'
+            ? 'px-2.5 sm:px-3.5 py-2 text-xs min-h-[40px] sm:min-h-[36px] max-w-[165px] sm:max-w-[245px] lg:max-w-[330px]'
             : 'px-4 py-2.5 text-xs sm:text-sm min-h-[44px] max-w-full'
         } inline-flex items-center justify-between gap-1.5 font-semibold rounded-md transition-colors border text-emerald-950 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 min-w-0 ${className}`}
       >
@@ -101,8 +101,11 @@ export default function MetaMaskConnectButton({
           {compact ? (
             <>
               <span className="sm:hidden">{compactAlt} ALT</span>
-              <span className="hidden sm:inline">
+              <span className="hidden sm:inline lg:hidden">
                 {shortAddr} · {compactAlt} ALT
+              </span>
+              <span className="hidden lg:inline">
+                {shortAddr} · {compactAlt} ALT · {wallet.balanceEth ?? '0.0000'} {wallet.nativeSymbol}
               </span>
             </>
           ) : (

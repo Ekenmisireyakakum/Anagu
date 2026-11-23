@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { fetchAuthUser, type ClientSessionUser } from '../lib/client-auth';
-import { fetchAnaguWalletBalance, type AnaguBalanceResult } from '../lib/metamask';
-import MetaMaskConnectButton from './MetaMaskConnectButton';
-import { useWallet } from './WalletContext';
+import {
+  fetchAuthUser,
+  getCachedAuthUser,
+  setCachedAuthUser,
+  type ClientSessionUser,
+} from '../lib/client-auth';
 import SiteHeader from './SiteHeader';
 import SiteFooter from './SiteFooter';
 import ParcelImage from './marketplace/ParcelImage';
@@ -23,12 +25,15 @@ export default function HomePortalClient({
   verifiedAvailableCount,
   unverifiedAvailableCount,
 }: HomePortalClientProps) {
-  const wallet = useWallet();
-  const [currentUser, setCurrentUser] = useState<ClientSessionUser | null>(initialUser);
-  const [linkedBalance, setLinkedBalance] = useState<AnaguBalanceResult | null>(null);
+  const [currentUser, setCurrentUser] = useState<ClientSessionUser | null>(
+    () => initialUser ?? (typeof window !== 'undefined' ? getCachedAuthUser() : null),
+  );
 
   useEffect(() => {
-    setCurrentUser(initialUser);
+    if (initialUser) {
+      setCachedAuthUser(initialUser);
+      setCurrentUser(initialUser);
+    }
   }, [initialUser]);
 
   useEffect(() => {
@@ -48,39 +53,9 @@ export default function HomePortalClient({
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const targetAddr =
-      wallet.isConnected && wallet.address
-        ? wallet.address
-        : currentUser?.walletAddress || null;
-    if (!currentUser || !targetAddr || (wallet.isConnected && wallet.balanceAlt !== null)) {
-      return;
-    }
-    fetchAnaguWalletBalance(targetAddr)
-      .then((res) => {
-        if (active) setLinkedBalance(res);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [currentUser, wallet.address, wallet.balanceAlt, wallet.isConnected]);
-
-  const effectiveAddress =
-    wallet.isConnected && wallet.address ? wallet.address : currentUser?.walletAddress || null;
-  const displayAlt =
-    wallet.isConnected && wallet.balanceAlt !== null
-      ? wallet.balanceAlt
-      : linkedBalance?.anaguAlt ?? '0.00';
-  const displayNative =
-    wallet.isConnected && wallet.balanceEth !== null
-      ? `${wallet.balanceEth} ${wallet.nativeSymbol}`
-      : `${linkedBalance?.nativePol ?? '0.0000'} POL`;
-
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
-      <SiteHeader initialUser={currentUser} />
+      <SiteHeader initialUser={currentUser ?? undefined} />
 
       <main className="flex-1">
         <section className="bg-white border-b border-slate-200">
@@ -96,63 +71,31 @@ export default function HomePortalClient({
               </h1>
               <p className="mt-4 sm:mt-5 text-sm sm:text-base text-slate-600 leading-relaxed max-w-xl">
                 {currentUser
-                  ? 'Search any address or mark out your plot corners right on the map, explore verified parcels on Access Land, inspect live GIS boundaries, and connect your Web3 wallet for Polygon ERC-721 & ERC-20 settlement.'
+                  ? 'Search any address or mark out your plot corners right on the map, explore verified parcels on Access Land, inspect live GIS boundaries, and connect your Web3 wallet in the top bar for Polygon ERC-721 & ERC-20 settlement.'
                   : 'ANAGU makes GIS land mapping effortless for everyone. Log in or sign up to map and register land locations, browse verified parcels on Access Land, explore the live GIS Map, and connect your Web3 wallet.'}
               </p>
 
               {currentUser ? (
-                <>
-                  <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3">
-                    <Link
-                      href="/register-land"
-                      className="px-6 py-3 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap text-center"
-                    >
-                      Register Land
-                    </Link>
-                    <Link
-                      href="/marketplace"
-                      className="px-6 py-3 text-sm font-semibold text-slate-900 bg-amber-300 border border-amber-400 rounded-md hover:bg-amber-400 transition-colors whitespace-nowrap text-center"
-                    >
-                      Access Land
-                    </Link>
-                    <Link
-                      href="/map"
-                      className="px-6 py-3 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 transition-colors whitespace-nowrap text-center"
-                    >
-                      GIS Map
-                    </Link>
-                  </div>
-
-                  <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-                    <MetaMaskConnectButton className="w-full sm:w-auto" />
-                    {effectiveAddress && (
-                      <div className="px-3.5 py-2.5 rounded-md border border-emerald-200 bg-emerald-50/70 text-xs flex flex-wrap items-center justify-between gap-2 min-w-0">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-                          <span className="text-slate-600 font-medium">
-                            {wallet.isConnected ? 'Wallet Balance:' : 'ANAGU Wallet:'}
-                          </span>
-                          <span className="font-mono font-bold text-emerald-800 tabular-nums break-words">
-                            {displayAlt} ALT
-                          </span>
-                          <span className="text-slate-400" aria-hidden="true">·</span>
-                          <span className="font-mono text-slate-800 tabular-nums">
-                            {displayNative}
-                          </span>
-                        </div>
-                        {wallet.isConnected && (
-                          <button
-                            type="button"
-                            disabled={wallet.isRefreshingBalance}
-                            onClick={() => void wallet.refreshBalance()}
-                            className="text-[11px] font-semibold text-emerald-800 hover:underline disabled:opacity-50 shrink-0"
-                          >
-                            {wallet.isRefreshingBalance ? 'Syncing...' : 'Refresh'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </>
+                <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3">
+                  <Link
+                    href="/register-land"
+                    className="px-6 py-3 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 transition-colors whitespace-nowrap text-center"
+                  >
+                    Register Land
+                  </Link>
+                  <Link
+                    href="/marketplace"
+                    className="px-6 py-3 text-sm font-semibold text-slate-900 bg-amber-300 border border-amber-400 rounded-md hover:bg-amber-400 transition-colors whitespace-nowrap text-center"
+                  >
+                    Access Land
+                  </Link>
+                  <Link
+                    href="/map"
+                    className="px-6 py-3 text-sm font-semibold text-slate-800 bg-white border border-slate-300 rounded-md hover:bg-slate-100 transition-colors whitespace-nowrap text-center"
+                  >
+                    GIS Map
+                  </Link>
+                </div>
               ) : (
                 <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
                   <Link
@@ -315,7 +258,7 @@ export default function HomePortalClient({
         </section>
       </main>
 
-      <SiteFooter initialAuthenticated={Boolean(currentUser)} />
+      <SiteFooter initialAuthenticated={currentUser ? true : undefined} />
     </div>
   );
 }

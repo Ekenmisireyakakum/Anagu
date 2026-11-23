@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import { useWallet } from '../../components/WalletContext';
-import { clearClientSessionToken, getAuthHeaders } from '../../lib/client-auth';
+import {
+  clearClientSessionToken,
+  getAuthHeaders,
+  getCachedAuthUser,
+  setCachedAuthUser,
+} from '../../lib/client-auth';
 import { formatCompactTokenBalance } from '../../lib/metamask';
 import ApplicationsPanel from '../../components/dashboard/ApplicationsPanel';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
@@ -25,8 +30,13 @@ type DashboardTab = 'workflow' | 'submit' | 'marketplace' | 'titles' | 'mqtt' | 
 export default function DashboardPage() {
   const router = useRouter();
   const wallet = useWallet();
-  const [user, setUser] = useState<SafeUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const cached = typeof window !== 'undefined' ? getCachedAuthUser() : null;
+  const [user, setUser] = useState<SafeUser | null>(
+    () => (cached && cached.email && cached.walletAddress ? (cached as SafeUser) : null),
+  );
+  const [authChecked, setAuthChecked] = useState(
+    () => Boolean(cached && cached.email && cached.walletAddress),
+  );
   const [activeTab, setActiveTab] = useState<DashboardTab>('workflow');
   const [applications, setApplications] = useState<LandApplicationRecord[]>([]);
   const [titles, setTitles] = useState<DigitalLandTitle[]>([]);
@@ -83,6 +93,7 @@ export default function DashboardPage() {
         }
         const data = await res.json();
         const me = data.user as SafeUser;
+        setCachedAuthUser(me);
         setUser(me);
         setAuthChecked(true);
         const tabParam =
@@ -217,13 +228,13 @@ export default function DashboardPage() {
           </p>
           <div className="pt-2 flex flex-col sm:flex-row justify-center gap-3">
             <Link
-              href="/login"
+              href="/login?next=%2Fdashboard"
               className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800"
             >
               Log In
             </Link>
             <Link
-              href="/register"
+              href="/register?next=%2Fdashboard"
               className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
             >
               Sign Up
@@ -297,18 +308,18 @@ export default function DashboardPage() {
                     : ''}
                   {wallet.balanceEth !== null ? ` · ${wallet.balanceEth} ${wallet.nativeSymbol}` : ''}
                 </button>
-                {!wallet.isBesuNetwork && (
+                {!wallet.isPolygonNetwork && (
                   <button
                     type="button"
-                    onClick={() => wallet.switchToBesu()}
-                    className="px-2.5 py-1.5 font-semibold text-slate-800 bg-slate-100 border border-slate-300 rounded hover:bg-slate-200"
+                    onClick={() => wallet.switchToPolygon()}
+                    className="px-2.5 py-1.5 font-semibold text-emerald-900 bg-emerald-50 border border-emerald-300 rounded hover:bg-emerald-100"
                   >
-                    Switch to Besu (1337)
+                    Switch to Polygon Amoy (80002)
                   </button>
                 )}
-                {wallet.isBesuNetwork && (
+                {wallet.isPolygonNetwork && (
                   <span className="px-2 py-1 font-mono text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
-                    Besu QBFT (1337)
+                    {wallet.chainId === 137 ? 'Polygon Mainnet (137)' : 'Polygon Amoy (80002)'}
                   </span>
                 )}
                 {wallet.address?.toLowerCase() !== user.walletAddress.toLowerCase() || !user.walletVerified ? (

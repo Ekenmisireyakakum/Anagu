@@ -4,11 +4,10 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FALLBACK_MARKET_RATES,
-  ethToUsd,
-  ngnToEth,
+  ngnToPol,
   ngnToUsd,
-  usdToEth,
   usdToNgn,
+  usdToPol,
   type MarketRates,
 } from '../../lib/pricing';
 import {
@@ -604,13 +603,13 @@ export default function MarketplaceClient({
               )}
               <div className="mt-1 text-[11px] font-mono text-slate-500 tabular-nums">
                 {listCurrency === 'USD'
-                  ? `≈ ${usdToEth(Number(listPriceUsd) || 0, marketRates)} ETH · NGN ${usdToNgn(
+                  ? `≈ ${usdToPol(Number(listPriceUsd) || 0, marketRates)} POL · NGN ${usdToNgn(
                       Number(listPriceUsd) || 0,
                       marketRates,
                     ).toLocaleString('en-NG')}`
                   : `≈ $${ngnToUsd(Number(listPriceNgn) || 0, marketRates).toLocaleString(
                       'en-US',
-                    )} USD · ${ngnToEth(Number(listPriceNgn) || 0, marketRates)} ETH`}
+                    )} USD · ${ngnToPol(Number(listPriceNgn) || 0, marketRates)} POL`}
               </div>
             </div>
             <div>
@@ -723,10 +722,10 @@ export default function MarketplaceClient({
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full xl:w-auto xl:justify-end min-w-0">
           <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-md text-[11px] font-mono text-emerald-950 tabular-nums max-w-full">
             <span>
-              1 ETH = $
-              {marketRates.ethUsd.toLocaleString('en-US', {
+              1 POL = $
+              {(marketRates.polUsd ?? marketRates.ethUsd).toLocaleString('en-US', {
                 minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
+                maximumFractionDigits: 4,
               })}{' '}
               USD
             </span>
@@ -827,7 +826,7 @@ export default function MarketplaceClient({
                         <div>
                           <div className="text-sm font-bold text-slate-900 tabular-nums">
                             {formatUsd(item.priceUsd, item.priceNgn, marketRates)} USD ·{' '}
-                            <span className="font-mono text-emerald-700">{item.priceEth} ETH</span>
+                            <span className="font-mono text-emerald-700">{item.priceEth} POL</span>
                           </div>
                           <div className="text-[11px] font-mono text-slate-500 tabular-nums">
                             {formatNgn(item.priceNgn)} · {item.parcelReference}
@@ -911,7 +910,7 @@ export default function MarketplaceClient({
                       </div>
                     </div>
                     <div className="sm:text-right font-mono text-xs text-slate-600 tabular-nums">
-                      <div className="font-semibold text-emerald-700">{selectedListing.priceEth} ETH</div>
+                      <div className="font-semibold text-emerald-700">{selectedListing.priceEth} POL</div>
                       <div className="font-semibold text-purple-800">
                         {(selectedListing.priceUsd && selectedListing.priceUsd > 0
                           ? selectedListing.priceUsd
@@ -1114,6 +1113,15 @@ export default function MarketplaceClient({
                               {wallet.isRefreshingBalance ? 'Syncing...' : 'Refresh'}
                             </button>
                           )}
+                          {wallet.isConnected && !wallet.isPolygonNetwork && (
+                            <button
+                              type="button"
+                              onClick={() => void wallet.switchToPolygon()}
+                              className="text-[11px] font-semibold text-emerald-700 hover:underline whitespace-nowrap"
+                            >
+                              Switch to Polygon (POL)
+                            </button>
+                          )}
                           {wallet.isConnected && wallet.provider && (
                             <button
                               type="button"
@@ -1150,8 +1158,8 @@ export default function MarketplaceClient({
                             {buying
                               ? 'Awaiting Wallet Confirmation...'
                               : wallet.isConnected
-                              ? `Buy Land with ${wallet.walletLabel} · ${selectedListing.priceEth} ETH (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)})`
-                              : `Buy Land (MetaMask / Trust Wallet) · ${selectedListing.priceEth} ETH`}
+                              ? `Buy Land with ${wallet.walletLabel} · ${selectedListing.priceEth} POL (${formatUsd(selectedListing.priceUsd, selectedListing.priceNgn, marketRates)})`
+                              : `Buy Land (MetaMask / Trust Wallet) · ${selectedListing.priceEth} POL`}
                           </button>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1161,7 +1169,7 @@ export default function MarketplaceClient({
                               onClick={() => handleWalletPurchase('metamask')}
                               className="py-2.5 px-3 text-xs font-semibold text-slate-900 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 disabled:opacity-50 transition-colors"
                             >
-                              Trigger MetaMask · {selectedListing.priceEth} ETH
+                              Trigger MetaMask · {selectedListing.priceEth} POL
                             </button>
                             <button
                               type="button"
@@ -1169,7 +1177,7 @@ export default function MarketplaceClient({
                               onClick={() => handleWalletPurchase('trustwallet')}
                               className="py-2.5 px-3 text-xs font-semibold text-slate-900 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 disabled:opacity-50 transition-colors"
                             >
-                              Trigger Trust Wallet · {selectedListing.priceEth} ETH
+                              Trigger Trust Wallet · {selectedListing.priceEth} POL
                             </button>
                           </div>
 
@@ -1287,7 +1295,7 @@ export default function MarketplaceClient({
                       #{p.tokenId}
                     </td>
                     <td className="px-4 py-3 font-mono tabular-nums text-slate-900">
-                      {formatUsd(p.priceUsd, p.priceNgn, marketRates)} · {p.priceEth} ETH · {formatNgn(p.priceNgn)}
+                      {formatUsd(p.priceUsd, p.priceNgn, marketRates)} · {p.priceEth} POL · {formatNgn(p.priceNgn)}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {p.walletLabel || p.paymentMethod}

@@ -1,5 +1,9 @@
 export interface MarketRates {
+  polUsd: number;
+  polNgn: number;
+  /** @deprecated Legacy schema alias mapped to POL/USD rate */
   ethUsd: number;
+  /** @deprecated Legacy schema alias mapped to POL/NGN rate */
   ethNgn: number;
   usdNgn: number;
   source: string;
@@ -7,9 +11,9 @@ export interface MarketRates {
   isLive: boolean;
 }
 
-const DEFAULT_ETH_USD = 1828.76;
-const DEFAULT_ETH_NGN = 2461288;
-const DEFAULT_USD_NGN = Math.round((DEFAULT_ETH_NGN / DEFAULT_ETH_USD) * 100) / 100;
+const DEFAULT_POL_USD = 0.25;
+const DEFAULT_POL_NGN = 375;
+const DEFAULT_USD_NGN = Math.round((DEFAULT_POL_NGN / DEFAULT_POL_USD) * 100) / 100;
 
 const CACHE_TTL_MS = 60_000;
 
@@ -22,10 +26,12 @@ interface RatesCacheState {
 const g = globalThis as typeof globalThis & { __anaguMarketRatesCache?: RatesCacheState };
 
 export const FALLBACK_MARKET_RATES: MarketRates = {
-  ethUsd: DEFAULT_ETH_USD,
-  ethNgn: DEFAULT_ETH_NGN,
+  polUsd: DEFAULT_POL_USD,
+  polNgn: DEFAULT_POL_NGN,
+  ethUsd: DEFAULT_POL_USD,
+  ethNgn: DEFAULT_POL_NGN,
   usdNgn: DEFAULT_USD_NGN,
-  source: 'Baseline Market Rate',
+  source: 'Polygon Baseline Rate',
   updatedAt: new Date().toISOString(),
   isLive: false,
 };
@@ -45,10 +51,31 @@ export function getCachedMarketRates(): MarketRates {
   return getCacheState().rates;
 }
 
+function buildMarketRates(polUsdRaw: number, polNgnRaw: number, source: string): MarketRates {
+  const effectivePolNgn =
+    Number.isFinite(polNgnRaw) && polNgnRaw > 0
+      ? polNgnRaw
+      : Math.round(polUsdRaw * DEFAULT_USD_NGN);
+  const usdNgn = Math.round((effectivePolNgn / polUsdRaw) * 100) / 100;
+  const polUsd = Math.round(polUsdRaw * 10000) / 10000;
+  const polNgn = Math.round(effectivePolNgn * 100) / 100;
+
+  return {
+    polUsd,
+    polNgn,
+    ethUsd: polUsd,
+    ethNgn: polNgn,
+    usdNgn,
+    source,
+    updatedAt: new Date().toISOString(),
+    isLive: true,
+  };
+}
+
 async function fetchFromCoinGecko(): Promise<MarketRates | null> {
   try {
     const res = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,ngn',
+      'https://api.coingecko.com/api/v3/simple/price?ids=polygon-ecosystem-token,matic-network&vs_currencies=usd,ngn',
       {
         signal: AbortSignal.timeout(2500),
         headers: { Accept: 'application/json' },
@@ -57,59 +84,42 @@ async function fetchFromCoinGecko(): Promise<MarketRates | null> {
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {
-      ethereum?: { usd?: number; ngn?: number };
+      'polygon-ecosystem-token'?: { usd?: number; ngn?: number };
+      'matic-network'?: { usd?: number; ngn?: number };
     };
-    const ethUsd = Number(data?.ethereum?.usd);
-    const ethNgn = Number(data?.ethereum?.ngn);
-    if (!Number.isFinite(ethUsd) || ethUsd <= 0) return null;
+    const entry = data?.['polygon-ecosystem-token'] || data?.['matic-network'];
+    const polUsd = Number(entry?.usd);
+    const polNgn = Number(entry?.ngn);
+    if (!Number.isFinite(polUsd) || polUsd <= 0) return null;
 
-    const effectiveEthNgn =
-      Number.isFinite(ethNgn) && ethNgn > 0 ? ethNgn : Math.round(ethUsd * DEFAULT_USD_NGN);
-    const usdNgn = Math.round((effectiveEthNgn / ethUsd) * 100) / 100;
-
-    return {
-      ethUsd: Math.round(ethUsd * 100) / 100,
-      ethNgn: Math.round(effectiveEthNgn),
-      usdNgn,
-      source: 'CoinGecko Live',
-      updatedAt: new Date().toISOString(),
-      isLive: true,
-    };
+    return buildMarketRates(polUsd, polNgn, 'CoinGecko Live (POL)');
   } catch {
     return null;
   }
 }
 
 async function fetchFromCoinbase(): Promise<MarketRates | null> {
-  try {
-    const res = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=ETH', {
-      signal: AbortSignal.timeout(2500),
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      data?: { rates?: { USD?: string; NGN?: string } };
-    };
-    const ethUsd = Number(data?.data?.rates?.USD);
-    const ethNgn = Number(data?.data?.rates?.NGN);
-    if (!Number.isFinite(ethUsd) || ethUsd <= 0) return null;
+  for (const symbol of ['POL', 'MATIC']) {
+    try {
+      const res = await fetch(`https://api.coinbase.com/v2/exchange-rates?currency=${symbol}`, {
+        signal: AbortSignal.timeout(2500),
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        data?: { rates?: { USD?: string; NGN?: string } };
+      };
+      const polUsd = Number(data?.data?.rates?.USD);
+      const polNgn = Number(data?.data?.rates?.NGN);
+      if (!Number.isFinite(polUsd) || polUsd <= 0) continue;
 
-    const effectiveEthNgn =
-      Number.isFinite(ethNgn) && ethNgn > 0 ? ethNgn : Math.round(ethUsd * DEFAULT_USD_NGN);
-    const usdNgn = Math.round((effectiveEthNgn / ethUsd) * 100) / 100;
-
-    return {
-      ethUsd: Math.round(ethUsd * 100) / 100,
-      ethNgn: Math.round(effectiveEthNgn),
-      usdNgn,
-      source: 'Coinbase Live',
-      updatedAt: new Date().toISOString(),
-      isLive: true,
-    };
-  } catch {
-    return null;
+      return buildMarketRates(polUsd, polNgn, 'Coinbase Live (POL)');
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 export async function refreshMarketRates(force = false): Promise<MarketRates> {
@@ -129,7 +139,7 @@ export async function refreshMarketRates(force = false): Promise<MarketRates> {
     } else {
       state.rates = {
         ...state.rates,
-        source: state.rates.isLive ? `${state.rates.source} (Cached)` : 'Baseline Market Rate',
+        source: state.rates.isLive ? `${state.rates.source} (Cached)` : 'Polygon Baseline Rate',
         updatedAt: state.rates.updatedAt || new Date().toISOString(),
       };
       state.expiresAt = Date.now() + 15_000;
@@ -143,29 +153,40 @@ export async function refreshMarketRates(force = false): Promise<MarketRates> {
   return run;
 }
 
-export function formatEthAmount(eth: number): string {
-  if (!Number.isFinite(eth) || eth <= 0) return '0.0000';
-  if (eth >= 0.001) {
-    return eth.toFixed(4);
+export function formatPolAmount(pol: number): string {
+  if (!Number.isFinite(pol) || pol <= 0) return '0.00';
+  if (pol >= 100) {
+    return pol.toFixed(2);
   }
-  return eth.toFixed(6);
+  if (pol >= 0.001) {
+    return pol.toFixed(4);
+  }
+  return pol.toFixed(6);
 }
 
-export function usdToEth(usd: number, rates: MarketRates = getCachedMarketRates()): string {
-  if (!Number.isFinite(usd) || usd <= 0 || !Number.isFinite(rates.ethUsd) || rates.ethUsd <= 0) {
-    return '0.0000';
+export const formatEthAmount = formatPolAmount;
+
+export function usdToPol(usd: number, rates: MarketRates = getCachedMarketRates()): string {
+  const rate = rates.polUsd ?? rates.ethUsd;
+  if (!Number.isFinite(usd) || usd <= 0 || !Number.isFinite(rate) || rate <= 0) {
+    return '0.00';
   }
-  return formatEthAmount(usd / rates.ethUsd);
+  return formatPolAmount(usd / rate);
 }
 
-export function ethToUsd(eth: string | number, rates: MarketRates = getCachedMarketRates()): number {
-  const num = Number(eth);
-  if (!Number.isFinite(num) || num <= 0 || !Number.isFinite(rates.ethUsd) || rates.ethUsd <= 0) {
+export const usdToEth = usdToPol;
+
+export function polToUsd(pol: string | number, rates: MarketRates = getCachedMarketRates()): number {
+  const rate = rates.polUsd ?? rates.ethUsd;
+  const num = Number(pol);
+  if (!Number.isFinite(num) || num <= 0 || !Number.isFinite(rate) || rate <= 0) {
     return 0;
   }
-  const usd = num * rates.ethUsd;
+  const usd = num * rate;
   return usd >= 100 ? Math.round(usd) : Math.round(usd * 100) / 100;
 }
+
+export const ethToUsd = polToUsd;
 
 export function usdToNgn(usd: number, rates: MarketRates = getCachedMarketRates()): number {
   if (!Number.isFinite(usd) || usd <= 0 || !Number.isFinite(rates.usdNgn) || rates.usdNgn <= 0) {
@@ -182,9 +203,12 @@ export function ngnToUsd(ngn: number, rates: MarketRates = getCachedMarketRates(
   return usd >= 100 ? Math.round(usd) : Math.round(usd * 100) / 100;
 }
 
-export function ngnToEth(ngn: number, rates: MarketRates = getCachedMarketRates()): string {
-  if (!Number.isFinite(ngn) || ngn <= 0 || !Number.isFinite(rates.ethNgn) || rates.ethNgn <= 0) {
-    return '0.0000';
+export function ngnToPol(ngn: number, rates: MarketRates = getCachedMarketRates()): string {
+  const rate = rates.polNgn ?? rates.ethNgn;
+  if (!Number.isFinite(ngn) || ngn <= 0 || !Number.isFinite(rate) || rate <= 0) {
+    return '0.00';
   }
-  return formatEthAmount(ngn / rates.ethNgn);
+  return formatPolAmount(ngn / rate);
 }
+
+export const ngnToEth = ngnToPol;

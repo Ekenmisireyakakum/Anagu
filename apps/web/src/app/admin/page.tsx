@@ -735,7 +735,7 @@ export default function AdminDashboardPage() {
                         </div>
                         {selectedApp.priceEth && (
                           <div className="text-xs font-mono text-emerald-700">
-                            {selectedApp.priceEth} ETH
+                            {selectedApp.priceEth} POL
                           </div>
                         )}
                       </div>

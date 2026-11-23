@@ -18,7 +18,7 @@ export default async function MarketplacePage() {
       nextPath="/marketplace"
       title="Log In or Sign Up to Access Land"
       description="Create an account or log in to browse verified parcels, inspect cadastral deeds, and acquire ERC-721 titles."
-      initialAuthenticated={Boolean(currentUser)}
+      initialAuthenticated={currentUser ? true : undefined}
       includeFooter
     >
       <div className="min-h-screen flex flex-col bg-slate-50">
@@ -26,13 +26,13 @@ export default async function MarketplacePage() {
           initialUser={
             currentUser
               ? { id: currentUser.id, fullName: currentUser.fullName, role: currentUser.role }
-              : null
+              : undefined
           }
         />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10">
           <MarketplaceClient />
         </main>
-        <SiteFooter initialAuthenticated={Boolean(currentUser)} />
+        <SiteFooter initialAuthenticated={currentUser ? true : undefined} />
       </div>
     </AuthRequiredGate>
   );

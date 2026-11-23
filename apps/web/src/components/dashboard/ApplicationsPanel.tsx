@@ -278,7 +278,7 @@ export default function ApplicationsPanel({
                           <span className="text-slate-500 block">Asking Price</span>
                           <span className="font-mono font-bold text-slate-900">
                             ${selected.priceUsd.toLocaleString()} USD
-                            {selected.priceEth ? ` (${selected.priceEth} ETH)` : ''}
+                            {selected.priceEth ? ` (${selected.priceEth} POL)` : ''}
                           </span>
                         </div>
                       ) : null}

@@ -46,7 +46,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Authentication failed');
-      setClientSessionToken(data.accessToken);
+      setClientSessionToken(data.accessToken, data.user ?? null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('anagu-auth-changed'));
       }
@@ -92,7 +92,7 @@ export default function LoginPage() {
         throw new Error(verified.message || 'Web3 wallet signature verification failed');
       }
 
-      setClientSessionToken(verified.accessToken);
+      setClientSessionToken(verified.accessToken, verified.user ?? null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('anagu-auth-changed'));
       }
@@ -164,7 +164,7 @@ export default function LoginPage() {
         );
         return;
       }
-      setClientSessionToken(data.accessToken);
+      setClientSessionToken(data.accessToken, data.user ?? null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('anagu-auth-changed'));
       }
@@ -323,7 +323,10 @@ export default function LoginPage() {
           <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
             <span>
               New here?{' '}
-              <Link href="/register" className="font-semibold text-emerald-700 hover:underline">
+              <Link
+                href={nextPath !== '/' ? `/register?next=${encodeURIComponent(nextPath)}` : '/register'}
+                className="font-semibold text-emerald-700 hover:underline"
+              >
                 Create Account / Wallet Sign Up →
               </Link>
             </span>

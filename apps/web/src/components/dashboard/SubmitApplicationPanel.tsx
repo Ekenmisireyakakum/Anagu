@@ -20,8 +20,8 @@ import {
 } from '../../lib/gis-utils';
 import {
   FALLBACK_MARKET_RATES,
-  usdToEth,
   usdToNgn,
+  usdToPol,
   type MarketRates,
 } from '../../lib/pricing';
 import { useWallet } from '../WalletContext';
@@ -215,8 +215,8 @@ export default function SubmitApplicationPanel({
     return Number.isFinite(num) && num > 0 ? Math.round(num * 100) / 100 : 0;
   }, [priceUsd]);
 
-  const estimatedEth = useMemo(
-    () => (parsedPriceUsd > 0 ? usdToEth(parsedPriceUsd, marketRates) : '0.0000'),
+  const estimatedPol = useMemo(
+    () => (parsedPriceUsd > 0 ? usdToPol(parsedPriceUsd, marketRates) : '0.00'),
     [marketRates, parsedPriceUsd],
   );
   const estimatedNgn = useMemo(
@@ -749,7 +749,7 @@ export default function SubmitApplicationPanel({
               </div>
               {parsedPriceUsd > 0 && (
                 <p className="mt-1 text-[11px] font-mono text-slate-500 tabular-nums">
-                  ≈ {parsedPriceUsd.toLocaleString('en-US')} ALT (ERC-20) · {estimatedEth} ETH · NGN{' '}
+                  ≈ {parsedPriceUsd.toLocaleString('en-US')} ALT (ERC-20) · {estimatedPol} POL · NGN{' '}
                   {estimatedNgn.toLocaleString('en-NG')}
                 </p>
               )}
