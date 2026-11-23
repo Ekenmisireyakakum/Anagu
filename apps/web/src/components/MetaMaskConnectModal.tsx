@@ -58,7 +58,7 @@ export default function MetaMaskConnectModal() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="wallet-modal-title"
-      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-3 sm:p-4"
+      className="fixed inset-0 z-[1300] bg-slate-900/50 flex items-center justify-center p-3 sm:p-4"
     >
       <div className="bg-white border border-slate-200 rounded-lg max-w-lg w-full overflow-hidden">
         <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-start sm:items-center justify-between gap-3">

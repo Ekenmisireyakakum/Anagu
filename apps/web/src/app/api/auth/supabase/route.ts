@@ -3,17 +3,23 @@ import { ethers } from 'ethers';
 import {
   createSessionToken,
   ensureStoreReady,
+  hashPassword,
   persistStoreToSupabase,
   recordAudit,
   toSafeUser,
   type UserAccount,
 } from '../../../../lib/anagu-store';
 import { getSessionCookieOptions, SESSION_COOKIE_NAME } from '../../../../lib/server-auth';
-import { getSupabaseAuthClient, verifySupabaseJwt } from '../../../../lib/supabase';
+import {
+  findUserByEmailInSupabase,
+  getSupabaseAuthClient,
+  upsertUserInSupabase,
+  verifySupabaseJwt,
+} from '../../../../lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    const store = await ensureStoreReady();
+    const store = await ensureStoreReady({ force: true });
     const body = await request.json();
     const mode = body?.mode === 'signup' ? 'signup' : body?.mode === 'token' ? 'token' : 'signin';
     const walletAddress =
@@ -24,6 +30,7 @@ export async function POST(request: NextRequest) {
     let supabaseUid = '';
     let email = '';
     let displayName = '';
+    let submittedPassword = '';
 
     if (mode === 'token') {
       const accessToken = String(body?.accessToken || '').trim();
@@ -44,6 +51,7 @@ export async function POST(request: NextRequest) {
     } else {
       const rawEmail = String(body?.email || '').trim().toLowerCase();
       const password = String(body?.password || '');
+      submittedPassword = password;
       const fullName = String(body?.fullName || '').trim();
 
       if (!rawEmail || !password) {
@@ -118,14 +126,21 @@ export async function POST(request: NextRequest) {
     }
 
     let user: UserAccount | undefined = store.users.find(
-      (u) => u.email.toLowerCase() === email,
+      (u) => u.email.trim().toLowerCase() === email,
     );
+    if (!user) {
+      const dbUser = await findUserByEmailInSupabase(email);
+      if (dbUser) {
+        store.users.push(dbUser);
+        user = dbUser;
+      }
+    }
 
     if (!user) {
       user = {
         id: supabaseUid,
         email,
-        passwordHash: '',
+        passwordHash: submittedPassword ? hashPassword(submittedPassword) : '',
         role: 'CITIZEN',
         fullName: displayName || email.split('@')[0],
         phone: '',
@@ -155,6 +170,9 @@ export async function POST(request: NextRequest) {
           { status: 403 },
         );
       }
+      if (submittedPassword && !user.passwordHash) {
+        user.passwordHash = hashPassword(submittedPassword);
+      }
       if (walletAddress && !user.walletVerified) {
         user.walletAddress = walletAddress;
         user.walletVerified = true;
@@ -172,6 +190,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await upsertUserInSupabase(user);
     await persistStoreToSupabase();
 
     const safeUser = toSafeUser(user);

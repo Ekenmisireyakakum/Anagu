@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useWallet } from '../WalletContext';
 import { grantLandRegistryRolesOnPolygon } from '../../lib/metamask';
 import { getPolygonExplorerAddressUrl } from '../../lib/polygon-config';
+import { getAuthHeaders } from '../../lib/client-auth';
 import type { DigitalLandTitle, RevocationGround, SafeUser } from './types';
 
 interface ContractStatusItem {
@@ -129,7 +130,8 @@ export default function TitlesAndGovernancePanel({
 
       const res = await fetch('/api/titles/transfer', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           tokenId: Number(transferTokenId),
           newOwnerEmailOrId: recipientEmail,
@@ -177,7 +179,8 @@ export default function TitlesAndGovernancePanel({
 
       const res = await fetch('/api/titles/revoke', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           tokenId: Number(revokeTokenId),
           grounds,

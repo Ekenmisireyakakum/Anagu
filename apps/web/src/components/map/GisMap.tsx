@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { MapContainer, TileLayer, GeoJSON, Popup, useMap } from 'react-leaflet';
 import { gisApi } from '../../lib/api';
-import { getOpenStreetMapUrl, polygonToWKT } from '../../lib/gis-utils';
+import { getOpenStreetMapUrl, parseLatLngText, polygonToWKT } from '../../lib/gis-utils';
 import { initSafeLeaflet, isLeafletMapReady } from '../../lib/leaflet-safe';
 import ParcelInfoPanel from './ParcelInfoPanel';
 
@@ -70,6 +70,30 @@ function MapInner({
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
+    if (!isLeafletMapReady(map)) return;
+    const container = map.getContainer();
+    const syncSize = () => {
+      if (isLeafletMapReady(map)) {
+        map.invalidateSize({ animate: false });
+      }
+    };
+    const rafId = window.requestAnimationFrame(syncSize);
+    const timerId = window.setTimeout(syncSize, 200);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && container) {
+      observer = new ResizeObserver(syncSize);
+      observer.observe(container);
+    }
+    window.addEventListener('resize', syncSize);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+      observer?.disconnect();
+      window.removeEventListener('resize', syncSize);
+    };
+  }, [map]);
+
+  useEffect(() => {
     if (flyTarget && isLeafletMapReady(map)) {
       map.stop();
       map.flyTo([flyTarget.lat, flyTarget.lon], flyTarget.zoom, { duration: 0.7 });
@@ -118,46 +142,92 @@ function MapInner({
       (window as unknown as { L: typeof L }).L = L;
     }
 
-    import('leaflet-draw').then(() => {
-      if (!mounted || !isLeafletMapReady(map)) return;
-      drawnItems = new L.FeatureGroup();
-      map.addLayer(drawnItems);
+    import('leaflet-draw')
+      .then(() => {
+        if (!mounted || !isLeafletMapReady(map)) return;
+        const winL =
+          typeof window !== 'undefined'
+            ? (window as unknown as { L?: typeof L }).L || L
+            : L;
 
-      const DrawControl = (L.Control as unknown as { Draw: new (opts: unknown) => L.Control }).Draw;
-      drawControl = new DrawControl({
-        edit: { featureGroup: drawnItems },
-        draw: {
-          polygon: { allowIntersection: false, showArea: false },
-          polyline: false,
-          rectangle: false,
-          circle: false,
-          circlemarker: false,
-          marker: false,
-        },
+        // Guard leaflet-draw@1.0.4 strict-mode global `type` bug inside readableArea
+        const geomUtil = (winL as unknown as {
+          GeometryUtil?: { readableArea?: (area: number, isMetric?: boolean, precision?: unknown) => string };
+        }).GeometryUtil;
+        if (geomUtil && typeof geomUtil.readableArea === 'function') {
+          const origReadable = geomUtil.readableArea;
+          geomUtil.readableArea = function (area: number, isMetric = true, precision?: unknown) {
+            try {
+              return origReadable.call(this, area, isMetric, precision);
+            } catch {
+              return `${Math.round(area).toLocaleString()} m²`;
+            }
+          };
+        }
+
+        const DrawControl =
+          (L.Control as unknown as { Draw?: new (opts: unknown) => L.Control }).Draw ||
+          (winL.Control as unknown as { Draw?: new (opts: unknown) => L.Control }).Draw;
+        if (!DrawControl) return;
+
+        drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        drawControl = new DrawControl({
+          edit: { featureGroup: drawnItems },
+          draw: {
+            polygon: { allowIntersection: false, showArea: false },
+            polyline: false,
+            rectangle: false,
+            circle: false,
+            circlemarker: false,
+            marker: false,
+          },
+        });
+        map.addControl(drawControl);
+        const drawEventCreated = (winL as unknown as { Draw?: { Event?: { CREATED?: string } } })
+          .Draw?.Event?.CREATED;
+        if (drawEventCreated) {
+          map.on(drawEventCreated, onCreated as unknown as L.LeafletEventHandlerFn);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to initialize map drawing tools:', err);
       });
-      map.addControl(drawControl);
-      const drawEventCreated = (L as unknown as { Draw: { Event: { CREATED: string } } }).Draw.Event.CREATED;
-      map.on(drawEventCreated, onCreated as unknown as L.LeafletEventHandlerFn);
-    });
 
     return () => {
       mounted = false;
-      const drawEventCreated = (L as unknown as { Draw?: { Event?: { CREATED?: string } } }).Draw?.Event?.CREATED;
+      const winL =
+        typeof window !== 'undefined'
+          ? (window as unknown as { L?: typeof L }).L || L
+          : L;
+      const drawEventCreated = (winL as unknown as { Draw?: { Event?: { CREATED?: string } } })
+        .Draw?.Event?.CREATED;
       if (drawEventCreated) {
         map.off(drawEventCreated, onCreated as unknown as L.LeafletEventHandlerFn);
       }
       if (drawControl && isLeafletMapReady(map)) {
-        map.removeControl(drawControl);
+        try {
+          map.removeControl(drawControl);
+        } catch {
+          // Ignore already removed draw control
+        }
       }
       if (drawnItems && isLeafletMapReady(map)) {
-        map.removeLayer(drawnItems);
+        try {
+          map.removeLayer(drawnItems);
+        } catch {
+          // Ignore already removed layer
+        }
       }
     };
   }, [map]);
 
   return (
     <>
-      {parcels.map((parcel) => {
+      {parcels
+        .filter((p) => Array.isArray(p?.geometry?.coordinates?.[0]) && p.geometry.coordinates[0].length >= 3)
+        .map((parcel) => {
         const centroid = getParcelCentroid(parcel.geometry);
         return (
           <GeoJSON
@@ -258,10 +328,14 @@ export default function GisMap() {
     const params: { status?: string; lga?: string } = {};
     if (statusFilter) params.status = statusFilter;
     if (lgaFilter) params.lga = lgaFilter;
+    setSearchNotice(null);
     gisApi
       .getParcels(params)
-      .then((res) => setParcels(res.data))
-      .catch(console.error);
+      .then((res) => setParcels(Array.isArray(res.data) ? res.data : []))
+      .catch((err) => {
+        console.error(err);
+        setSearchNotice('Unable to load GIS parcel boundaries right now.');
+      });
   }, [statusFilter, lgaFilter]);
 
   useEffect(() => {
@@ -275,14 +349,23 @@ export default function GisMap() {
     setSearchingOsm(true);
     setSearchNotice(null);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ng&q=${encodeURIComponent(
-        q.toLowerCase().includes('lagos') ? q : `${q}, Lagos, Nigeria`,
-      )}`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const coords = parseLatLngText(q);
+      if (coords) {
+        setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 16, key: Date.now() });
+        setMobileToolsOpen(false);
+        return;
+      }
+
+      const res = await fetch(`/api/gis/geocode?q=${encodeURIComponent(q)}`, {
+        headers: { Accept: 'application/json' },
+      });
       if (!res.ok) throw new Error('Search unavailable');
-      const items = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+      const data = (await res.json()) as {
+        results?: Array<{ lat: string; lon: string; display_name: string }>;
+      };
+      const items = data.results || [];
       if (!items.length) {
-        setSearchNotice('No matching street found in Lagos on OpenStreetMap.');
+        setSearchNotice(`No matching location found for "${q}". Try a city, street, or "lat, lng".`);
         return;
       }
       setFlyTarget({
@@ -291,8 +374,9 @@ export default function GisMap() {
         zoom: 16,
         key: Date.now(),
       });
+      setMobileToolsOpen(false);
     } catch {
-      setSearchNotice('OpenStreetMap search temporarily unreachable.');
+      setSearchNotice('Location search is temporarily unreachable.');
     } finally {
       setSearchingOsm(false);
     }
@@ -309,7 +393,7 @@ export default function GisMap() {
   const center: [number, number] = [6.4698, 3.4068];
 
   return (
-    <div className="h-full w-full relative">
+    <div className="h-full w-full min-h-[520px] relative">
       {/* Mobile Compact Header Toggle */}
       <div className="md:hidden absolute top-3 left-14 right-3 z-[1000] flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-md text-xs">
         <span className="font-semibold text-slate-900 truncate">
@@ -391,7 +475,6 @@ export default function GisMap() {
         <form
           onSubmit={(e) => {
             void handleOsmSearch(e);
-            setMobileToolsOpen(false);
           }}
           className="flex items-center gap-1.5"
         >
@@ -399,8 +482,8 @@ export default function GisMap() {
             type="search"
             value={osmSearch}
             onChange={(e) => setOsmSearch(e.target.value)}
-            placeholder="Locate street on OpenStreetMap..."
-            className="flex-1 md:w-48 px-2 py-1.5 md:py-1 border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+            placeholder="Locate address, city, or lat, lng..."
+            className="flex-1 md:w-52 px-2 py-1.5 md:py-1 border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
           <button
             type="submit"
@@ -423,7 +506,7 @@ export default function GisMap() {
       <MapContainer center={center} zoom={12} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapInner parcels={parcels} flyTarget={flyTarget} />
       </MapContainer>

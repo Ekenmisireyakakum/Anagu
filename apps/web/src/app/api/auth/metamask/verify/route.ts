@@ -10,10 +10,11 @@ import {
   getSessionCookieOptions,
   SESSION_COOKIE_NAME,
 } from '../../../../../lib/server-auth';
+import { upsertUserInSupabase } from '../../../../../lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureStoreReady();
+    const store = await ensureStoreReady({ force: true });
     const body = await request.json();
     const mode = body.mode === 'link' ? 'link' : 'login';
     const currentUser = mode === 'link' ? getAuthenticatedUser(request) : null;
@@ -25,7 +26,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const challengeToken = request.cookies.get('anagu_mm_nonce')?.value;
+    const challengeToken =
+      request.cookies.get('anagu_mm_nonce')?.value ||
+      (typeof body.challengeToken === 'string' ? body.challengeToken : undefined);
     const result = verifyMetaMaskChallenge({
       address: String(body.address || ''),
       signature: String(body.signature || ''),
@@ -36,6 +39,10 @@ export async function POST(request: NextRequest) {
       email: typeof body.email === 'string' ? body.email : undefined,
     });
 
+    const account = store.users.find((u) => u.id === result.user.id);
+    if (account) {
+      await upsertUserInSupabase(account);
+    }
     await persistStoreToSupabase();
 
     const token = createSessionToken(result.user);

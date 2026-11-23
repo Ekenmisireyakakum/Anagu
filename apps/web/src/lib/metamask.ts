@@ -286,7 +286,10 @@ export function formatMetaMaskError(err: unknown, walletName = 'Web3 Wallet'): s
   }
   const msg = maybeObj.shortMessage || maybeObj.message || (err instanceof Error ? err.message : String(err));
   if (msg.includes('Failed to connect to MetaMask') || msg.includes('Failed to connect')) {
-    return `Browser ${walletName} extension could not be reached inside this embedded frame. Open ANAGU in a standalone tab or pair via mobile QR.`;
+    if (isRunningInIframe()) {
+      return `Browser ${walletName} extension could not be reached inside this embedded frame. Open ANAGU in a standalone tab, use Instant Browser Web3 Wallet, or pair via Mobile QR.`;
+    }
+    return `Could not connect to the ${walletName} browser extension. Unlock or reload ${walletName} in your browser, or use Instant Browser Web3 Wallet / Mobile QR.`;
   }
   return msg;
 }
@@ -578,6 +581,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export async function connectMetaMaskAccounts(provider: Eip1193Provider): Promise<string[]> {
+  if (!provider || typeof provider.request !== 'function') {
+    throw new Error('Web3 wallet provider is unavailable.');
+  }
   let accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
   if (!accounts || accounts.length === 0) {
     try {

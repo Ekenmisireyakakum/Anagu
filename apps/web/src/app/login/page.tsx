@@ -6,16 +6,17 @@ import { useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
 import { useWallet } from '../../components/WalletContext';
+import { setClientSessionToken } from '../../lib/client-auth';
 
 function sanitizeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/register-land';
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
   return raw;
 }
 
 export default function LoginPage() {
   const router = useRouter();
   const wallet = useWallet();
-  const [nextPath, setNextPath] = useState('/register-land');
+  const [nextPath, setNextPath] = useState('/');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +40,16 @@ export default function LoginPage() {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: targetEmail, password: targetPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Authentication failed');
+      setClientSessionToken(data.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('anagu-auth-changed'));
+      }
       router.push(nextPath);
       router.refresh();
     } catch (err) {
@@ -59,6 +65,7 @@ export default function LoginPage() {
     try {
       const nonceRes = await fetch('/api/auth/metamask/nonce', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: connectedAddress }),
       });
@@ -71,11 +78,13 @@ export default function LoginPage() {
 
       const verifyRes = await fetch('/api/auth/metamask/verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address: connectedAddress,
           signature,
           mode: 'login',
+          challengeToken: challenge.challengeToken,
         }),
       });
       const verified = await verifyRes.json();
@@ -83,6 +92,10 @@ export default function LoginPage() {
         throw new Error(verified.message || 'Web3 wallet signature verification failed');
       }
 
+      setClientSessionToken(verified.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('anagu-auth-changed'));
+      }
       router.push(nextPath);
       router.refresh();
     } catch (err) {
@@ -132,6 +145,7 @@ export default function LoginPage() {
     try {
       const res = await fetch('/api/auth/supabase', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'signin',
@@ -143,6 +157,16 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Unable to authenticate with Supabase');
+      }
+      if (data.confirmationRequired) {
+        setNotice(
+          data.message || 'Please check your email to confirm your account before signing in.',
+        );
+        return;
+      }
+      setClientSessionToken(data.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('anagu-auth-changed'));
       }
       router.push(nextPath);
       router.refresh();

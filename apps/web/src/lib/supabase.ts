@@ -585,3 +585,91 @@ export function scheduleSupabaseSync(store: SupabaseStoreShape): Promise<void> {
 export async function flushSupabaseSync(store: SupabaseStoreShape): Promise<void> {
   await scheduleSupabaseSync(store);
 }
+
+export async function findUserByEmailInSupabase(email: string): Promise<UserAccount | null> {
+  const client = getSupabaseAdminClient();
+  if (!client) return null;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  try {
+    const { data, error } = await client
+      .from('anagu_users')
+      .select('*')
+      .ilike('email', normalized)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+      id: String(data.id),
+      email: String(data.email),
+      passwordHash: String(data.password_hash || ''),
+      role: data.role,
+      fullName: String(data.full_name),
+      phone: String(data.phone || ''),
+      walletAddress: String(data.wallet_address),
+      walletVerified: Boolean(data.wallet_verified),
+      walletLinkedAt: data.wallet_linked_at ?? null,
+      isActive: Boolean(data.is_active),
+      createdAt: String(data.created_at),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertUserInSupabase(user: UserAccount): Promise<void> {
+  const client = getSupabaseAdminClient();
+  if (!client) return;
+
+  const normalizedEmail = user.email.trim().toLowerCase();
+  const payload = {
+    id: user.id,
+    email: normalizedEmail,
+    password_hash: user.passwordHash,
+    role: user.role,
+    full_name: user.fullName,
+    phone: user.phone,
+    wallet_address: user.walletAddress,
+    wallet_verified: Boolean(user.walletVerified),
+    wallet_linked_at: user.walletLinkedAt ?? null,
+    is_active: user.isActive,
+    created_at: user.createdAt,
+  };
+
+  const { error } = await client.from('anagu_users').upsert(payload, { onConflict: 'email' });
+  if (error) {
+    if (isMissingTableError(error)) {
+      getRuntimeState().schemaReady = false;
+      return;
+    }
+    // Retry conflict on id if email wasn't the conflict target
+    const retry = await client.from('anagu_users').upsert(payload, { onConflict: 'id' });
+    if (retry.error && !isMissingTableError(retry.error)) {
+      throw new Error(`Unable to save user to Supabase: ${retry.error.message}`);
+    }
+  }
+}
+
+export async function ensureSupabaseAuthUser(input: {
+  email: string;
+  password: string;
+  fullName: string;
+}): Promise<void> {
+  const client = getSupabaseAdminClient();
+  if (!client) return;
+  try {
+    await client.auth.admin.createUser({
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: input.fullName.trim(),
+      },
+    });
+  } catch {
+    // Non-fatal if user already exists in Supabase auth.users
+  }
+}
+

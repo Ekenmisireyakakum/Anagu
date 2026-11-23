@@ -1,6 +1,45 @@
-import Link from 'next/link';
+'use client';
 
-export default function SiteFooter({ adminMode = false }: { adminMode?: boolean }) {
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { fetchAuthUser } from '../lib/client-auth';
+
+export default function SiteFooter({
+  adminMode = false,
+  initialAuthenticated,
+}: {
+  adminMode?: boolean;
+  initialAuthenticated?: boolean;
+}) {
+  const [authenticated, setAuthenticated] = useState(Boolean(initialAuthenticated));
+
+  useEffect(() => {
+    if (initialAuthenticated !== undefined) {
+      setAuthenticated(initialAuthenticated);
+    }
+  }, [initialAuthenticated]);
+
+  useEffect(() => {
+    if (adminMode) return;
+    let active = true;
+    const syncAuth = () => {
+      fetchAuthUser()
+        .then((u) => {
+          if (active) {
+            setAuthenticated(Boolean(u));
+          }
+        })
+        .catch(() => {});
+    };
+
+    syncAuth();
+    window.addEventListener('anagu-auth-changed', syncAuth);
+    return () => {
+      active = false;
+      window.removeEventListener('anagu-auth-changed', syncAuth);
+    };
+  }, [adminMode]);
+
   return (
     <footer className="bg-white border-t border-slate-200 mt-12 sm:mt-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -14,18 +53,31 @@ export default function SiteFooter({ adminMode = false }: { adminMode?: boolean 
         </div>
         {!adminMode && (
           <nav className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs font-medium text-slate-600">
-            <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap py-1">
-              Map &amp; Register Land
-            </Link>
-            <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap py-1">
-              Access Land
-            </Link>
-            <Link href="/map" className="hover:text-slate-900 whitespace-nowrap py-1">
-              GIS Map
-            </Link>
-            <Link href="/register" className="hover:text-slate-900 whitespace-nowrap py-1">
-              Sign Up
-            </Link>
+            {authenticated ? (
+              <>
+                <Link href="/register-land" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  Register Land
+                </Link>
+                <Link href="/marketplace" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  Access Land
+                </Link>
+                <Link href="/map" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  GIS Map
+                </Link>
+                <Link href="/dashboard" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  Dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  Log In
+                </Link>
+                <Link href="/register" className="hover:text-slate-900 whitespace-nowrap py-1">
+                  Sign Up
+                </Link>
+              </>
+            )}
             <Link href="/admin/login" className="hover:text-slate-900 whitespace-nowrap py-1">
               Admin Portal
             </Link>
@@ -38,3 +90,4 @@ export default function SiteFooter({ adminMode = false }: { adminMode?: boolean 
     </footer>
   );
 }
+

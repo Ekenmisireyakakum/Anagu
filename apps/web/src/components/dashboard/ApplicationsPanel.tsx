@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ethers } from 'ethers';
 import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
+import { getAuthHeaders } from '../../lib/client-auth';
 import { useWallet } from '../WalletContext';
 import type { LandApplicationRecord, SafeUser } from './types';
 
@@ -106,7 +107,8 @@ export default function ApplicationsPanel({
 
       const res = await fetch(`/api/applications/${selected.id}/action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ action, payload }),
       });
       const data = await res.json();

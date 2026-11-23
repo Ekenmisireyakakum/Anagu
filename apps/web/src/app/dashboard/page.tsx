@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import { useWallet } from '../../components/WalletContext';
+import { clearClientSessionToken, getAuthHeaders } from '../../lib/client-auth';
 import ApplicationsPanel from '../../components/dashboard/ApplicationsPanel';
 import MonitoringAndAdminPanel from '../../components/dashboard/MonitoringAndAdminPanel';
 import SubmitApplicationPanel from '../../components/dashboard/SubmitApplicationPanel';
@@ -39,11 +40,12 @@ export default function DashboardPage() {
   const loadWorkspaceData = useCallback(async (currentUser: SafeUser) => {
     setLoadingData(true);
     try {
+      const authHeaders = getAuthHeaders();
       const [appsRes, titlesRes, mqttRes, auditRes] = await Promise.all([
-        fetch('/api/applications'),
-        fetch('/api/titles'),
-        fetch('/api/notifications'),
-        fetch('/api/audit'),
+        fetch('/api/applications', { credentials: 'include', headers: authHeaders }),
+        fetch('/api/titles', { credentials: 'include', headers: authHeaders }),
+        fetch('/api/notifications', { credentials: 'include', headers: authHeaders }),
+        fetch('/api/audit', { credentials: 'include', headers: authHeaders }),
       ]);
       if (appsRes.ok) setApplications(await appsRes.json());
       if (titlesRes.ok) setTitles(await titlesRes.json());
@@ -51,7 +53,10 @@ export default function DashboardPage() {
       if (auditRes.ok) setAuditLogs(await auditRes.json());
 
       if (currentUser.role === 'LAND_ADMINISTRATOR' || currentUser.role === 'REGISTRAR') {
-        const usersRes = await fetch('/api/users');
+        const usersRes = await fetch('/api/users', {
+          credentials: 'include',
+          headers: authHeaders,
+        });
         if (usersRes.ok) setUsersList(await usersRes.json());
       } else {
         setUsersList([]);
@@ -63,7 +68,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let active = true;
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: getAuthHeaders(),
+    })
       .then(async (res) => {
         if (!active) return;
         if (!res.ok) {
@@ -102,7 +111,11 @@ export default function DashboardPage() {
   }, [loadWorkspaceData]);
 
   const handleSignOut = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    clearClientSessionToken();
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('anagu-auth-changed'));
+    }
     router.push('/login');
     router.refresh();
   };
@@ -115,7 +128,8 @@ export default function DashboardPage() {
       try {
         const nonceRes = await fetch('/api/auth/metamask/nonce', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ address: connectedAddress }),
         });
         const challenge = await nonceRes.json();
@@ -127,11 +141,13 @@ export default function DashboardPage() {
 
         const verifyRes = await fetch('/api/auth/metamask/verify', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             address: connectedAddress,
             signature,
             mode: 'link',
+            challengeToken: challenge.challengeToken,
           }),
         });
         const verified = await verifyRes.json();
@@ -203,13 +219,13 @@ export default function DashboardPage() {
               href="/login"
               className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800"
             >
-              Go to Sign In
+              Log In
             </Link>
             <Link
-              href="/marketplace"
+              href="/register"
               className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
             >
-              Access Land (Verified &amp; Unverified)
+              Sign Up
             </Link>
           </div>
         </main>

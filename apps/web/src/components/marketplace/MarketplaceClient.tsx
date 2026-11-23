@@ -13,6 +13,7 @@ import {
 } from '../../lib/pricing';
 import { watchLandTokenInWallet } from '../../lib/metamask';
 import { getPolygonExplorerTxUrl } from '../../lib/polygon-config';
+import { getAuthHeaders } from '../../lib/client-auth';
 import { useWallet } from '../WalletContext';
 import type {
   DigitalLandTitle,
@@ -90,7 +91,14 @@ export default function MarketplaceClient({
     setLoading(true);
     try {
       const mktUrl = forceRefreshRates ? '/api/marketplace?refreshRates=1' : '/api/marketplace';
-      const [mktRes, meRes] = await Promise.all([fetch(mktUrl), fetch('/api/auth/me?optional=1')]);
+      const [mktRes, meRes] = await Promise.all([
+        fetch(mktUrl, { credentials: 'include', headers: getAuthHeaders() }),
+        fetch('/api/auth/me?optional=1', {
+          cache: 'no-store',
+          credentials: 'include',
+          headers: getAuthHeaders(),
+        }),
+      ]);
       if (mktRes.ok) {
         const data = await mktRes.json();
         const items: LandListingRecord[] = data.listings || [];
@@ -121,7 +129,10 @@ export default function MarketplaceClient({
         if (currentUser) {
           setUser(currentUser);
           setBuyerName((prev) => prev || currentUser.fullName);
-          const titlesRes = await fetch('/api/titles');
+          const titlesRes = await fetch('/api/titles', {
+            credentials: 'include',
+            headers: getAuthHeaders(),
+          });
           if (titlesRes.ok) {
             const allTitles: DigitalLandTitle[] = await titlesRes.json();
             const eligible = allTitles.filter(
@@ -199,7 +210,8 @@ export default function MarketplaceClient({
     }) => {
       const res = await fetch('/api/marketplace/purchase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -368,7 +380,8 @@ export default function MarketplaceClient({
     try {
       const res = await fetch('/api/marketplace', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           tokenId: Number(listTokenId),
           title: listTitle,

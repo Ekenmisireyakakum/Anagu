@@ -320,7 +320,7 @@ function sha256(input: string): string {
   return '0x' + crypto.createHash('sha256').update(input).digest('hex');
 }
 
-function hashPassword(password: string): string {
+export function hashPassword(password: string): string {
   return crypto.createHash('sha256').update(`anagu:${password}`).digest('hex');
 }
 

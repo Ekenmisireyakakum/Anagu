@@ -174,22 +174,38 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
       };
 
+      const handleProviderError = () => {
+        // Guard against uncaught EventEmitter 'error' events from injected wallet extensions
+      };
+
+      const handleDisconnect = () => {
+        // Ignore transient extension stream disconnects
+      };
+
       targetProvider.on?.('accountsChanged', handleAccountsChanged);
       targetProvider.on?.('chainChanged', handleChainChanged);
+      targetProvider.on?.('error', handleProviderError);
+      targetProvider.on?.('disconnect', handleDisconnect);
       listenerCleanupRef.current = () => {
         targetProvider.removeListener?.('accountsChanged', handleAccountsChanged);
         targetProvider.removeListener?.('chainChanged', handleChainChanged);
+        targetProvider.removeListener?.('error', handleProviderError);
+        targetProvider.removeListener?.('disconnect', handleDisconnect);
       };
     },
     [syncAccountState],
   );
 
   const refreshWallets = useCallback(async (): Promise<DiscoveredWallet[]> => {
-    const all = await discoverAllWalletProviders(350);
-    setDiscoveredWallets(all);
-    setIsMetaMaskAvailable(all.some((w) => w.walletType === 'metamask'));
-    setIsTrustWalletAvailable(all.some((w) => w.walletType === 'trustwallet'));
-    return all;
+    try {
+      const all = await discoverAllWalletProviders(350);
+      setDiscoveredWallets(all);
+      setIsMetaMaskAvailable(all.some((w) => w.walletType === 'metamask'));
+      setIsTrustWalletAvailable(all.some((w) => w.walletType === 'trustwallet'));
+      return all;
+    } catch {
+      return [];
+    }
   }, []);
 
   useEffect(() => {
@@ -247,48 +263,61 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       window.addEventListener('focus', handleWindowFocus);
     }
 
-    discoverAllWalletProviders(400).then(async (all) => {
-      if (!mounted) return;
-      setDiscoveredWallets(all);
-      setIsMetaMaskAvailable(all.some((w) => w.walletType === 'metamask'));
-      setIsTrustWalletAvailable(all.some((w) => w.walletType === 'trustwallet'));
+    const inEmbeddedFrame = isRunningInIframe();
 
-      for (const w of all) {
-        try {
-          const accounts = await getMetaMaskAccounts(w.provider);
-          if (mounted && accounts.length > 0) {
-            setProvider(w.provider);
-            setWalletType(w.walletType);
-            setWalletName(w.name);
-            setConnectionMethod('extension');
-            attachProviderListeners(w.provider);
-            await syncAccountState(w.provider, accounts[0]);
-            return;
-          }
-        } catch {
-          // Passive check ignored when wallet locked
+    discoverAllWalletProviders(400)
+      .then(async (all) => {
+        if (!mounted) return;
+        setDiscoveredWallets(all);
+        setIsMetaMaskAvailable(all.some((w) => w.walletType === 'metamask'));
+        setIsTrustWalletAvailable(all.some((w) => w.walletType === 'trustwallet'));
+
+        if (hasSavedBrowserSignerWallet()) {
+          const sessionWallet = createBrowserSignerProvider();
+          setProvider(sessionWallet.provider);
+          setWalletType('browser_signer');
+          setWalletName('Browser Web3 Wallet');
+          setConnectionMethod('extension');
+          await syncAccountState(sessionWallet.provider, sessionWallet.address);
+          return;
         }
-      }
 
-      if (mounted && hasSavedBrowserSignerWallet()) {
-        const sessionWallet = createBrowserSignerProvider();
-        setProvider(sessionWallet.provider);
-        setWalletType('browser_signer');
-        setWalletName('Browser Web3 Wallet');
-        setConnectionMethod('extension');
-        await syncAccountState(sessionWallet.provider, sessionWallet.address);
-        return;
-      }
+        // Inside embedded frames, Chrome extensions (notably MetaMask inpage.js) often fail
+        // port messaging on background RPC calls. Avoid passive eth_accounts/eth_chainId probes
+        // on mount inside iframes so page load never triggers extension connection errors.
+        if (!inEmbeddedFrame) {
+          for (const w of all) {
+            try {
+              const accounts = await getMetaMaskAccounts(w.provider);
+              if (mounted && accounts.length > 0) {
+                setProvider(w.provider);
+                setWalletType(w.walletType);
+                setWalletName(w.name);
+                setConnectionMethod('extension');
+                attachProviderListeners(w.provider);
+                await syncAccountState(w.provider, accounts[0]);
+                return;
+              }
+            } catch {
+              // Passive check ignored when wallet locked or disconnected
+            }
+          }
+        }
 
-      if (mounted && all[0]) {
-        setProvider(all[0].provider);
-        setWalletType(all[0].walletType);
-        setWalletName(all[0].name);
-        attachProviderListeners(all[0].provider);
-        const cid = await getMetaMaskChainId(all[0].provider).catch(() => null);
-        if (mounted) setChainId(cid);
-      }
-    });
+        if (mounted && all[0]) {
+          setProvider(all[0].provider);
+          setWalletType(all[0].walletType);
+          setWalletName(all[0].name);
+          attachProviderListeners(all[0].provider);
+          if (!inEmbeddedFrame) {
+            const cid = await getMetaMaskChainId(all[0].provider).catch(() => null);
+            if (mounted) setChainId(cid);
+          }
+        }
+      })
+      .catch(() => {
+        // Ignore passive discovery errors
+      });
 
     return () => {
       mounted = false;
@@ -537,6 +566,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const target = preferredType || 'any';
       if (preferredType) setSelectedTab(preferredType);
 
+      if (isRunningInIframe()) {
+        setError(null);
+        openModal(preferredType || 'all');
+        return null;
+      }
+
       const extFound = await discoverWalletProvider(target, 250);
       if (extFound) {
         const res = await connectWithExtension(target);
@@ -662,9 +697,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         walletType !== params.walletProvider;
 
       if (!activeProvider || !activeAddr || forceSpecific) {
+        if (isRunningInIframe()) {
+          openModal(requestedType === 'any' ? 'all' : requestedType);
+          throw new Error(
+            'Connect your Web3 wallet (Browser Wallet, Mobile QR, or Standalone Tab) in the dialog to authorize this land transaction.',
+          );
+        }
         const ext = await discoverWalletProvider(requestedType, 300);
         if (ext) {
           const res = await connectWithExtension(requestedType);
+          if (!res.address) {
+            openModal(requestedType === 'any' ? 'all' : requestedType);
+            throw new Error(
+              res.error || 'Connect your Web3 wallet to complete authorization.',
+            );
+          }
           activeProvider = ext.provider;
           activeAddr = res.address;
           resolvedWalletName = ext.walletName;

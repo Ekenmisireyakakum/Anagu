@@ -6,10 +6,11 @@ import { useEffect, useState } from 'react';
 import SiteHeader from '../../components/SiteHeader';
 import SiteFooter from '../../components/SiteFooter';
 import { useWallet } from '../../components/WalletContext';
+import { setClientSessionToken } from '../../lib/client-auth';
 import { POLYGON_CHAIN_ID } from '../../lib/metamask';
 
 function sanitizeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/register-land';
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
   return raw;
 }
 
@@ -17,7 +18,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const wallet = useWallet();
 
-  const [nextPath, setNextPath] = useState('/register-land');
+  const [nextPath, setNextPath] = useState('/');
   const [signupTab, setSignupTab] = useState<'wallet' | 'email'>('wallet');
 
   // Optional profile details auto-populated / editable for wallet sign-up
@@ -55,6 +56,7 @@ export default function RegisterPage() {
     try {
       const nonceRes = await fetch('/api/auth/metamask/nonce', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: connectedAddress }),
       });
@@ -67,11 +69,13 @@ export default function RegisterPage() {
 
       const verifyRes = await fetch('/api/auth/metamask/verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address: connectedAddress,
           signature,
           mode: 'login',
+          challengeToken: challenge.challengeToken,
           fullName: walletDisplayName.trim() || undefined,
           email: walletEmail.trim() || undefined,
         }),
@@ -81,6 +85,10 @@ export default function RegisterPage() {
         throw new Error(verified.message || 'Wallet sign-up verification failed');
       }
 
+      setClientSessionToken(verified.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('anagu-auth-changed'));
+      }
       router.push(nextPath);
       router.refresh();
     } catch (err) {
@@ -144,6 +152,7 @@ export default function RegisterPage() {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: fullName.trim(),
@@ -155,6 +164,16 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Unable to create account');
+      }
+      if (data.confirmationRequired) {
+        setNotice(
+          data.message || 'Account created. Please verify your email before signing in.',
+        );
+        return;
+      }
+      setClientSessionToken(data.accessToken);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('anagu-auth-changed'));
       }
       router.push(nextPath);
       router.refresh();
@@ -433,8 +452,8 @@ export default function RegisterPage() {
                 Sign In →
               </Link>
             </span>
-            <Link href="/register-land" className="font-semibold text-slate-800 hover:underline">
-              Skip straight to Map &amp; Register Land →
+            <Link href="/" className="font-medium text-slate-500 hover:text-slate-800">
+              ← Back to Home
             </Link>
           </div>
         </div>

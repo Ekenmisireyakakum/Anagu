@@ -25,6 +25,7 @@ import {
   type MarketRates,
 } from '../../lib/pricing';
 import { useWallet } from '../WalletContext';
+import { getAuthHeaders } from '../../lib/client-auth';
 import OsmParcelMap from '../map/OsmParcelMap';
 import type {
   DocumentCategory,
@@ -438,7 +439,8 @@ export default function SubmitApplicationPanel({
 
       const res = await fetch('/api/applications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ ...payload, walletProof }),
       });
       const data = await res.json();
@@ -498,7 +500,8 @@ export default function SubmitApplicationPanel({
       try {
         const res = await fetch('/api/applications', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(item.payload),
         });
         if (res.ok) {

@@ -67,6 +67,30 @@ function MapViewportController({
   const map = useMap();
 
   useEffect(() => {
+    if (!isLeafletMapReady(map)) return;
+    const container = map.getContainer();
+    const syncSize = () => {
+      if (isLeafletMapReady(map)) {
+        map.invalidateSize({ animate: false });
+      }
+    };
+    const rafId = window.requestAnimationFrame(syncSize);
+    const timerId = window.setTimeout(syncSize, 200);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && container) {
+      observer = new ResizeObserver(syncSize);
+      observer.observe(container);
+    }
+    window.addEventListener('resize', syncSize);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+      observer?.disconnect();
+      window.removeEventListener('resize', syncSize);
+    };
+  }, [map]);
+
+  useEffect(() => {
     if (!skipAutoFit && positions.length >= 3 && isLeafletMapReady(map)) {
       const bounds = L.latLngBounds(positions);
       if (bounds.isValid()) {
@@ -164,12 +188,12 @@ export default function OsmParcelMapInner({
   const reverseLookup = useCallback(async (lat: number, lon: number): Promise<string | undefined> => {
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=17`,
+        `/api/gis/geocode?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
         { headers: { Accept: 'application/json' } },
       );
       if (!res.ok) return undefined;
-      const data = (await res.json()) as { display_name?: string };
-      return data.display_name;
+      const data = (await res.json()) as { display_name?: string | null };
+      return data.display_name || undefined;
     } catch {
       return undefined;
     }
@@ -246,16 +270,17 @@ export default function OsmParcelMapInner({
         return;
       }
 
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
-        q,
-      )}`;
+      const url = `/api/gis/geocode?q=${encodeURIComponent(q)}`;
       const res = await fetch(url, { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error('GIS location search unavailable');
-      const results = (await res.json()) as Array<{
-        lat: string;
-        lon: string;
-        display_name: string;
-      }>;
+      const data = (await res.json()) as {
+        results?: Array<{
+          lat: string;
+          lon: string;
+          display_name: string;
+        }>;
+      };
+      const results = data.results || [];
       if (!results.length) {
         setSearchError(
           `No location matched "${q}". Try a city/street name, "lat, lng" coordinates, or click directly on the map.`,
@@ -460,7 +485,7 @@ export default function OsmParcelMapInner({
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
           <MapViewportController
